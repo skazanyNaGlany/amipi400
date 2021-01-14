@@ -1,0 +1,112 @@
+diff --git a/Makefile.am b/Makefile.am
+index 62132d7c..2df18785 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -171,6 +171,8 @@ fs_uae_SOURCES = \
+ 	src/fsuae/fsuae-options.h \
+ 	src/fsuae/fsuae-oskeyboard.c \
+ 	src/fsuae/fsuae-oskeyboard.h \
++	src/fsuae/fsuae-handler.c \
++	src/fsuae/fsuae-handler.h \
+ 	src/fsuae/fsuae-path.c \
+ 	src/fsuae/fsuae-path.h \
+ 	src/fsuae/fsuae-plugins.c \
+diff --git a/src/fsuae/fsuae-handler.c b/src/fsuae/fsuae-handler.c
+new file mode 100644
+index 00000000..bcfc9620
+--- /dev/null
++++ b/src/fsuae/fsuae-handler.c
+@@ -0,0 +1,20 @@
++#define FSUAE_INTERNAL
++#include "fsuae-handler.h"
++
++#include <stdio.h>
++#include <signal.h>
++#include <unistd.h>
++
++
++void SIGUSR1_handler(int signum)
++{
++    ext_disk_eject(0);
++    ext_disk_insert_force(0, "./games/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 1 of 2).adf", 1);
++}
++
++void fsuae_handlers_init(void)
++{
++    printf("[FSUAE] fsuae_handlers_init\n");
++
++    signal(SIGUSR1, SIGUSR1_handler);
++}
+diff --git a/src/fsuae/fsuae-handler.h b/src/fsuae/fsuae-handler.h
+new file mode 100644
+index 00000000..b0ff3573
+--- /dev/null
++++ b/src/fsuae/fsuae-handler.h
+@@ -0,0 +1,13 @@
++#ifndef FSUAE_HANDLER_H_
++#define FSUAE_HANDLER_H_
++
++#include "uae/types.h"
++#include "fsuae-config.h"
++
++void ext_disk_eject(int num);
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++
++void SIGUSR1_handler(int signum);
++void fsuae_handlers_init(void);
++
++#endif  // FSUAE_HANDLER_H_
+diff --git a/src/fsuae/fsuae-main.c b/src/fsuae/fsuae-main.c
+index 21f84858..6017906a 100644
+--- a/src/fsuae/fsuae-main.c
++++ b/src/fsuae/fsuae-main.c
+@@ -61,6 +61,7 @@
+ #include "fsemu-util.h"
+ #include "fsemu-video.h"
+ #include "fsemu-window.h"
++#include "fsuae-handler.h"
+ 
+ #ifdef LINUX
+ #include "../../fsemu/gamemode/lib/gamemode_client.h"
+@@ -1872,6 +1873,8 @@ int main(int argc, char *argv[])
+         fsemu_input_autofill_devices();
+         fsemu_input_reconfigure();
+         // FIXME: MOVE SOMEWHERE ELSE
++
++        fsuae_handlers_init();
+     }
+ 
+     const char *value = fs_config_get_const_string("whdload_quit_key");
+diff --git a/src/od-fs/include/uae/uae.h b/src/od-fs/include/uae/uae.h
+index 5bd9b24c..c2ce12cd 100644
+--- a/src/od-fs/include/uae/uae.h
++++ b/src/od-fs/include/uae/uae.h
+@@ -135,6 +135,9 @@ int amiga_floppy_get_drive_type(int index);
+ int amiga_floppy_get_speed();
+ int amiga_floppy_set_speed(int speed);
+ 
++void ext_disk_eject(int num);
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++
+ // FIMXE: REMOVE
+ int amiga_floppy_set_from_list(int drive, int index);
+ 
+diff --git a/src/od-fs/libamiga.cpp b/src/od-fs/libamiga.cpp
+index 2d549ac6..6de91613 100644
+--- a/src/od-fs/libamiga.cpp
++++ b/src/od-fs/libamiga.cpp
+@@ -485,6 +485,14 @@ int amiga_get_num_floppy_drives()
+     return 4;
+ }
+ 
++void ext_disk_eject(int num) {
++    disk_eject(num);
++}
++
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect) {
++    disk_insert_force(num, name, forcedwriteprotect);
++}
++
+ int amiga_floppy_set_from_list(int drive, int index)
+ {
+     write_log("insert floppy (%d) into drive (%d)\n", index, drive);
