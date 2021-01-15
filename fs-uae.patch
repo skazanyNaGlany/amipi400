@@ -1,24 +1,57 @@
 diff --git a/Makefile.am b/Makefile.am
-index 62132d7c..2df18785 100644
+index 62132d7c..4beea729 100644
 --- a/Makefile.am
 +++ b/Makefile.am
-@@ -171,6 +171,8 @@ fs_uae_SOURCES = \
+@@ -171,6 +171,10 @@ fs_uae_SOURCES = \
  	src/fsuae/fsuae-options.h \
  	src/fsuae/fsuae-oskeyboard.c \
  	src/fsuae/fsuae-oskeyboard.h \
 +	src/fsuae/fsuae-handler.c \
 +	src/fsuae/fsuae-handler.h \
++	src/fsuae/fsuae-ini-exec.c \
++	src/fsuae/fsuae-ini-exec.h \
  	src/fsuae/fsuae-path.c \
  	src/fsuae/fsuae-path.h \
  	src/fsuae/fsuae-plugins.c \
+diff --git a/src/fsuae/fsuae-consts.h b/src/fsuae/fsuae-consts.h
+new file mode 100644
+index 00000000..6e1e3615
+--- /dev/null
++++ b/src/fsuae/fsuae-consts.h
+@@ -0,0 +1,8 @@
++#ifndef FSUAE_CONSTS_H_
++#define FSUAE_CONSTS_H_
++
++#define TMP_INI_FILE "fs-uae.tmp.ini"
++#define MAX_LINE_LENGTH 1024
++#define APP_NAME "BERRYMIGA"
++
++#endif  // FSUAE_CONSTS_H_
+diff --git a/src/fsuae/fsuae-externals.h b/src/fsuae/fsuae-externals.h
+new file mode 100644
+index 00000000..43050928
+--- /dev/null
++++ b/src/fsuae/fsuae-externals.h
+@@ -0,0 +1,9 @@
++#ifndef FSUAE_EXTERNALS_H_
++#define FSUAE_EXTERNALS_H_
++
++#include "uae/types.h"
++
++void ext_disk_eject(int num);
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++
++#endif  // FSUAE_EXTERNALS_H_
 diff --git a/src/fsuae/fsuae-handler.c b/src/fsuae/fsuae-handler.c
 new file mode 100644
-index 00000000..bcfc9620
+index 00000000..b6c842bb
 --- /dev/null
 +++ b/src/fsuae/fsuae-handler.c
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,21 @@
 +#define FSUAE_INTERNAL
 +#include "fsuae-handler.h"
++#include "fsuae-ini-exec.h"
++#include "fsuae-consts.h"
 +
 +#include <stdio.h>
 +#include <signal.h>
@@ -27,8 +60,7 @@ index 00000000..bcfc9620
 +
 +void SIGUSR1_handler(int signum)
 +{
-+    ext_disk_eject(0);
-+    ext_disk_insert_force(0, "./games/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 1 of 2).adf", 1);
++    execute_ini_file(TMP_INI_FILE);
 +}
 +
 +void fsuae_handlers_init(void)
@@ -39,23 +71,224 @@ index 00000000..bcfc9620
 +}
 diff --git a/src/fsuae/fsuae-handler.h b/src/fsuae/fsuae-handler.h
 new file mode 100644
-index 00000000..b0ff3573
+index 00000000..70ad4a2f
 --- /dev/null
 +++ b/src/fsuae/fsuae-handler.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,10 @@
 +#ifndef FSUAE_HANDLER_H_
 +#define FSUAE_HANDLER_H_
 +
 +#include "uae/types.h"
-+#include "fsuae-config.h"
-+
-+void ext_disk_eject(int num);
-+void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++#include "fsuae-externals.h"
 +
 +void SIGUSR1_handler(int signum);
 +void fsuae_handlers_init(void);
 +
 +#endif  // FSUAE_HANDLER_H_
+diff --git a/src/fsuae/fsuae-ini-exec.c b/src/fsuae/fsuae-ini-exec.c
+new file mode 100644
+index 00000000..479796e7
+--- /dev/null
++++ b/src/fsuae/fsuae-ini-exec.c
+@@ -0,0 +1,179 @@
++#define FSUAE_INTERNAL
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++
++#include "fsuae-ini-exec.h"
++#include "fsuae-consts.h"
++#include "fsuae-externals.h"
++
++
++void _clean_line(char *line) {
++    // FIXME: implement better trim function
++    char buffer[MAX_LINE_LENGTH];
++    int line_length = strlen(line);
++
++    if (!line_length) {
++        return;
++    }
++
++    memset(buffer, 0, MAX_LINE_LENGTH);
++    strncpy(buffer, line, MAX_LINE_LENGTH);
++
++    if (buffer[line_length - 1] == '\n') {
++        buffer[line_length - 1] = 0;
++    }
++
++    line_length = strlen(buffer);
++
++    if (!line_length) {
++        return;
++    }
++
++    if (buffer[line_length - 1] == '\r') {
++        buffer[line_length - 1] = 0;
++    }
++
++    strncpy(line, buffer, MAX_LINE_LENGTH);
++}
++
++int _str_copy_from_char(char *str, char c, size_t maxlen) {
++    int char_at = 0;
++    char *pch;
++    char buffer[maxlen];
++
++    pch = strchr(str, c);
++
++    if (!pch) {
++        return 0;
++    }
++
++    char_at = pch - str + 1;
++
++    memset(buffer, 0, maxlen);
++    strncpy(buffer, &str[char_at], maxlen);
++    strncpy(str, buffer, maxlen);
++
++    return 1;
++}
++
++int _str_starts_with(const char *str, const char *pre) {
++    size_t lenpre = strlen(pre),
++           lenstr = strlen(str);
++    return lenstr < lenpre ? 0 : memcmp(pre, str, lenpre) == 0;
++}
++
++int _execute_command(char *command) {
++    char arguments[MAX_LINE_LENGTH];
++    char arg0[MAX_LINE_LENGTH];
++    char arg1[MAX_LINE_LENGTH];
++    char arg2[MAX_LINE_LENGTH];
++    char *ptr;
++    int ptr_index;
++
++    if (!strlen(command) || command[0] == '#') {
++        return 0;
++    }
++
++    if (strncmp(command, "cmd", 3) != 0) {
++        // skip not cmdX=
++        return 0;
++    }
++
++    printf("[%s] raw command: %s\n", APP_NAME, command);
++
++    if (!_str_copy_from_char(command, '=', MAX_LINE_LENGTH)) {
++        return 0;
++    }
++
++    printf("[%s] processed command: %s\n", APP_NAME, command);
++
++    if (_str_starts_with(command, "ext_disk_eject ")) {
++        if (!_str_copy_from_char(command, ' ', MAX_LINE_LENGTH)) {
++            return 0;
++        }
++
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        strncpy(arguments, command, MAX_LINE_LENGTH);
++
++        _str_copy_from_char(arguments, ',', MAX_LINE_LENGTH);
++        strncpy(arg0, arguments, MAX_LINE_LENGTH);
++
++        ext_disk_eject(atoi(arg0));
++    }
++    else if (_str_starts_with(command, "ext_disk_insert_force ")) {
++        if (!_str_copy_from_char(command, ' ', MAX_LINE_LENGTH)) {
++            return 0;
++        }
++
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        ptr = strtok(command, ",");
++        ptr_index = 0;
++
++        while (ptr != NULL) {
++            switch (ptr_index) {
++                case 0:
++                    strncpy(arg0, ptr, MAX_LINE_LENGTH);
++                    break;
++                case 1:
++                    strncpy(arg1, ptr, MAX_LINE_LENGTH);
++                    break;
++                case 2:
++                    strncpy(arg2, ptr, MAX_LINE_LENGTH);
++                    break;
++            }
++
++            ptr = strtok(NULL, ",");
++            ptr_index++;
++        }
++
++        ext_disk_insert_force(
++            atoi(arg0),
++            arg1,
++            atoi(arg2)
++        );
++    }
++
++    return 1;
++}
++
++int execute_ini_file(const char *pathname) {
++    FILE *file;
++    char line[MAX_LINE_LENGTH];
++    size_t line_length;
++    int commands_mode = 0;
++
++    file = fopen(pathname, "r");
++
++    if (!file) {
++        return 0;
++    }
++
++    while(fgets(line, MAX_LINE_LENGTH, file) != NULL) {
++        _clean_line(line);
++
++        if (!strncmp(line, "[commands]", MAX_LINE_LENGTH)) {
++            // commands
++            commands_mode = 1;
++
++            printf("[%s] executing temporary INI file commands\n", APP_NAME);
++
++            continue;
++        }
++        else if (line[0] == '[') {
++            commands_mode = 0;
++
++            continue;
++        }
++
++        if (commands_mode) {
++            _execute_command(line);
++        }
++    }
++
++    fclose(file);
++
++    return 1;
++}
+diff --git a/src/fsuae/fsuae-ini-exec.h b/src/fsuae/fsuae-ini-exec.h
+new file mode 100644
+index 00000000..f94d1a1e
+--- /dev/null
++++ b/src/fsuae/fsuae-ini-exec.h
+@@ -0,0 +1,13 @@
++#ifndef FSUAE_INI_EXEC_H_
++#define FSUAE_INI_EXEC_H_
++
++#include <stdio.h>
++
++void _clean_line(char *line);
++int execute_ini_file(const char *pathname);
++int _execute_command(char *command);
++int _str_copy_from_char(char *str, char c, size_t maxlen);
++int _str_starts_with(const char *str, const char *pre);
++
++#endif  // FSUAE_INI_EXEC_H_
++
 diff --git a/src/fsuae/fsuae-main.c b/src/fsuae/fsuae-main.c
 index 21f84858..6017906a 100644
 --- a/src/fsuae/fsuae-main.c
