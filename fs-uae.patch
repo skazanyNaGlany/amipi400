@@ -110,31 +110,25 @@ index dadaf917..606bed33 100644
  // fsemu_sdlwindow_init.
  void fsemu_sdlwindow_set_no_event_polling(bool no_event_polling);
 diff --git a/fsemu/src/fsemu-startupinfo.c b/fsemu/src/fsemu-startupinfo.c
-index 9d9b1e3e..a390d036 100644
+index 9d9b1e3e..784582ea 100644
 --- a/fsemu/src/fsemu-startupinfo.c
 +++ b/fsemu/src/fsemu-startupinfo.c
-@@ -96,12 +96,12 @@ void fsemu_startupinfo_init(void)
-         fsemu_fontcache_font("Fonts/SairaCondensed-Regular.ttf", 24);
- #endif
- 
--    int x = 240;
-+    // int x = 240;
-     const char *string;
-     // fsemu_image_t *image;
+@@ -102,6 +102,7 @@ void fsemu_startupinfo_init(void)
      uint32_t white = FSEMU_RGB(0xffffff);
      uint32_t white_2 = FSEMU_RGBA(0xffffffd0);
--    uint32_t white_3 = FSEMU_RGBA(0xffffffc0);
-+    // uint32_t white_3 = FSEMU_RGBA(0xffffffc0);
+     uint32_t white_3 = FSEMU_RGBA(0xffffffc0);
++    const char *disable_menu_key_info;
  
  #if 0
      if (fsemu_option_read_const_string(FSEMU_OPTION_GAME_COVER, &string)) {
-@@ -255,30 +255,30 @@ void fsemu_startupinfo_init(void)
+@@ -255,30 +256,32 @@ void fsemu_startupinfo_init(void)
      }
  #endif
  
 -
--    x = 30;
--
+     x = 30;
++    disable_menu_key_info = fs_config_get_const_string("disable_menu_key_info");
+ 
 -    item = &fsemu_startupinfo.menu_shortcut_text_item;
 -    image = fsemu_font_render_text_to_image(font_3, "MENU KEY:", white_3);
 -    fsemu_gui_image(item,
@@ -147,42 +141,52 @@ index 9d9b1e3e..a390d036 100644
 -    item->z_index = 5001;
 -    fsemu_gui_add_item(item);
 -    x += image->width;
--
++    if (!disable_menu_key_info || !atoi(disable_menu_key_info)) {
++        item = &fsemu_startupinfo.menu_shortcut_text_item;
++        image = fsemu_font_render_text_to_image(font_3, "MENU KEY:", white_3);
++        fsemu_gui_image(item,
++                        x,
++                        1080 - 60 + (60 - image->height) / 2,
++                        image->width,
++                        image->height,
++                        image);
++        item->coordinates = FSEMU_COORD_1080P_LEFT;
++        item->z_index = 5001;
++        fsemu_gui_add_item(item);
++        x += image->width;
+ 
 -    x += 15;
--
++        x += 15;
+ 
 -    item = &fsemu_startupinfo.menu_shortcut_key_item;
 -    image = fsemu_image_load("Images/ShortcutKeyAlt.png");
 -    fsemu_gui_image(item, x, 1080 - 60, image->width, image->height, image);
 -    item->coordinates = FSEMU_COORD_1080P_LEFT;
 -    item->z_index = 5001;
 -    fsemu_gui_add_item(item);
-+    // disable MENU KEY info
-+    // x = 30;
-+
-+    // item = &fsemu_startupinfo.menu_shortcut_text_item;
-+    // image = fsemu_font_render_text_to_image(font_3, "MENU KEY:", white_3);
-+    // fsemu_gui_image(item,
-+    //                 x,
-+    //                 1080 - 60 + (60 - image->height) / 2,
-+    //                 image->width,
-+    //                 image->height,
-+    //                 image);
-+    // item->coordinates = FSEMU_COORD_1080P_LEFT;
-+    // item->z_index = 5001;
-+    // fsemu_gui_add_item(item);
-+    // x += image->width;
-+
-+    // x += 15;
-+
-+    // item = &fsemu_startupinfo.menu_shortcut_key_item;
-+    // image = fsemu_image_load("Images/ShortcutKeyAlt.png");
-+    // fsemu_gui_image(item, x, 1080 - 60, image->width, image->height, image);
-+    // item->coordinates = FSEMU_COORD_1080P_LEFT;
-+    // item->z_index = 5001;
-+    // fsemu_gui_add_item(item);
++        item = &fsemu_startupinfo.menu_shortcut_key_item;
++        image = fsemu_image_load("Images/ShortcutKeyAlt.png");
++        fsemu_gui_image(item, x, 1080 - 60, image->width, image->height, image);
++        item->coordinates = FSEMU_COORD_1080P_LEFT;
++        item->z_index = 5001;
++        fsemu_gui_add_item(item);
++    }
  }
  
  static void fsemu_startupinfo_set_visible(bool visible)
+diff --git a/fsemu/src/fsemu-startupinfo.h b/fsemu/src/fsemu-startupinfo.h
+index 83fcbffc..0c679b54 100644
+--- a/fsemu/src/fsemu-startupinfo.h
++++ b/fsemu/src/fsemu-startupinfo.h
+@@ -7,6 +7,8 @@
+ extern "C" {
+ #endif
+ 
++const char *fs_config_get_const_string(const char *key);
++
+ /** This must be called before fsemu_startupinfo_init. */
+ void fsemu_startupinfo_set_emulator_name(const char *emulator_name);
+ 
 diff --git a/src/fsuae/fsuae-consts.h b/src/fsuae/fsuae-consts.h
 new file mode 100644
 index 00000000..6e1e3615
