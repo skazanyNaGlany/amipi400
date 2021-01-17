@@ -5,6 +5,7 @@ import time
 import os
 import tempfile
 import sys
+import fnmatch
 
 from pprint import pprint
 from collections import OrderedDict
@@ -13,12 +14,14 @@ from collections import OrderedDict
 APP_UNIXNAME = 'berrymiga'
 OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 FS_UAE_PATHNAME = '/home/sng/projects.local/fs-uae.devbox/src/fs-uae/fs-uae'
+FS_UAE_TMP_INI = os.path.join(os.path.dirname(FS_UAE_PATHNAME), 'fs-uae.tmp.ini')
+COUNT_FLOPPIES = 1
 
-
-os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
-
+floppies = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
 old_partitions = None
+
+os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
 
 def get_relative_path(pathname: str) -> str:
@@ -107,6 +110,12 @@ def eject_unmounted(partitions: dict, old_partitions: dict):
         if not mounted:
             print('Unmounted ' + key)
 
+            if floppies[0]:
+                if floppies[0].startswith(value['mountpoint']):
+                    print('Ejecting DF0')
+
+                    floppies[0] = None
+
 
 def insert_mounted(partitions: dict, old_partitions: dict):
     # detect new mounted partition and insert ADF
@@ -128,6 +137,28 @@ def insert_mounted(partitions: dict, old_partitions: dict):
 
         if new_mounted:
             print('New mounted ' + key)
+
+            insert_floppy_from_mountpoint(value['mountpoint'])
+
+
+def insert_floppy_from_mountpoint(mountpoint: str):
+    roms = []
+
+    for file in os.listdir(mountpoint):
+        file_lower = file.lower()
+
+        if not fnmatch.fnmatch(file, '*.adf'):
+            continue
+
+        roms.append(os.path.join(mountpoint, file))
+
+    roms = sorted(roms)
+
+    if roms:
+        if floppies[0] != roms[0]:
+            print('Inserting "' + roms[0] + '" into DF0')
+
+            floppies[0] = roms[0]
 
 
 while True:
