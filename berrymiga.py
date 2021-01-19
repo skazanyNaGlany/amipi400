@@ -132,36 +132,45 @@ def eject_unmounted(partitions: dict, old_partitions: dict):
                     floppies[0] = None
 
 
+def insert_mounted_floppy(ipartition: str, ipartition_data, force: Optional[bool] = False):
+    new_mounted = False
+
+    if not old_partitions:
+        new_mounted = True
+
+    if not new_mounted:
+        if ipartition not in old_partitions:
+            new_mounted = True
+
+        if not new_mounted:
+            for key2, value2 in old_partitions.items():
+                if key2 == ipartition and not value2['mountpoint']:
+                    new_mounted = True
+                    break
+
+    if force:
+        new_mounted = True
+
+    if new_mounted:
+        print('New mounted ' + ipartition)
+
+        assign_floppy_from_mountpoint(ipartition_data['mountpoint'])
+
+        return True
+
+    return False
+
+
 def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool] = False):
     # detect new mounted partition and insert ADF
     # if it is present
     for key, value in partitions.items():
-        if not value['mountpoint'] or not value['label'].startswith('BM_DF'):
+        if not value['mountpoint']:
             continue
 
-        new_mounted = False
-
-        if not old_partitions:
-            new_mounted = True
-
-        if not new_mounted:
-            if key not in old_partitions:
-                new_mounted = True
-
-            if not new_mounted:
-                for key2, value2 in old_partitions.items():
-                    if key2 == key and not value2['mountpoint']:
-                        new_mounted = True
-                        break
-
-        if force:
-            new_mounted = True
-
-        if new_mounted:
-            print('New mounted ' + key)
-
-            assign_floppy_from_mountpoint(value['mountpoint'])
-            break
+        if value['label'].startswith('BM_DF'):
+            if insert_mounted_floppy(key, value, force):
+                break
 
 
 def assign_floppy_from_mountpoint(mountpoint: str):
