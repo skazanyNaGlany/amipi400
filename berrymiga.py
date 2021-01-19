@@ -32,30 +32,43 @@ def get_relative_path(pathname: str) -> str:
     return pathname
 
 
-def get_removable_partitions() -> OrderedDict:
-    # devices = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk') if device.attributes.asstring('removable') == "1"]
-    devices = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk')]
-    removable = OrderedDict()
+def get_partition_label(raw_partitions, device_pathname: str, default: str) ->  Optional[str]:
+    for ipartition in raw_partitions:
+        if ipartition.device_node == device_pathname:
+            return ipartition.get('ID_FS_LABEL', '')
+    
+    return default
 
-    for device in devices:
+
+def get_partitions(removables_only: Optional[bool] = False) -> OrderedDict:
+    if removables_only:
+        disks = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk') if device.attributes.asstring('removable') == "1"]
+    else:
+        disks = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk')]
+
+    raw_partitions = context.list_devices(subsystem='block', DEVTYPE='partition')
+    return_partitions = OrderedDict()
+
+    for device in disks:
         partitions = [device.device_node for device in context.list_devices(subsystem='block', DEVTYPE='partition', parent=device)]
 
         for ipartition in partitions:
-            if ipartition not in removable:
-                removable[ipartition] = {
+            if ipartition not in return_partitions:
+                return_partitions[ipartition] = {
                     'mountpoint': None,
                     'internal_mountpoint': os.path.join(
                         OWN_MOUNT_POINT_PREFIX,
                         get_relative_path(ipartition)
                     ),
-                    'removable': device.attributes.asstring('removable') == '1'
+                    'removable': device.attributes.asstring('removable') == '1',
+                    'label': get_partition_label(raw_partitions, ipartition, '')
                 }
 
         for p in psutil.disk_partitions():
             if p.device in partitions:
-                removable[p.device]['mountpoint'] = p.mountpoint
+                return_partitions[p.device]['mountpoint'] = p.mountpoint
 
-    return removable
+    return return_partitions
 
 
 def mount_partitions(partitions: dict) -> list:
@@ -77,18 +90,19 @@ def mount_partitions(partitions: dict) -> list:
     return mounted
 
 
-def print_removables(removables: dict):
-    if not removables:
+def print_partitions(partitions: dict):
+    if not partitions:
         return
 
-    print('File systems:')
+    print('Known partitions:')
 
-    for key, value in removables.items():
+    for key, value in partitions.items():
         print(key)
 
         print('  mountpoint: ' + str(value['mountpoint']))
         print('  internal_mountpoint: ' + value['internal_mountpoint'])
         print('  removable: ' + str(value['removable']))
+        print('  label: ' + str(value['label']))
 
         print()
 
@@ -118,37 +132,45 @@ def eject_unmounted(partitions: dict, old_partitions: dict):
                     floppies[0] = None
 
 
-def insert_mounted(partitions: dict, old_partitions: dict):
+def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool] = False):
     # detect new mounted partition and insert ADF
     # if it is present
     for key, value in partitions.items():
-        if not value['mountpoint']:
+        if not value['mountpoint'] or not value['label'].startswith('BM_DF'):
             continue
 
         new_mounted = False
 
-        if key not in old_partitions:
+        if not old_partitions:
             new_mounted = True
 
         if not new_mounted:
-            for key2, value2 in old_partitions.items():
-                if key2 == key and not value2['mountpoint']:
-                    new_mounted = True
-                    break
+            if key not in old_partitions:
+                new_mounted = True
+
+            if not new_mounted:
+                for key2, value2 in old_partitions.items():
+                    if key2 == key and not value2['mountpoint']:
+                        new_mounted = True
+                        break
+
+        if force:
+            new_mounted = True
 
         if new_mounted:
             print('New mounted ' + key)
 
-            insert_floppy_from_mountpoint(value['mountpoint'])
+            assign_floppy_from_mountpoint(value['mountpoint'])
+            break
 
 
-def insert_floppy_from_mountpoint(mountpoint: str):
+def assign_floppy_from_mountpoint(mountpoint: str):
     roms = []
 
     for file in os.listdir(mountpoint):
         file_lower = file.lower()
 
-        if not fnmatch.fnmatch(file, '*.adf'):
+        if not fnmatch.fnmatch(file_lower, '*.adf'):
             continue
 
         roms.append(os.path.join(mountpoint, file))
@@ -157,19 +179,56 @@ def insert_floppy_from_mountpoint(mountpoint: str):
 
     if roms:
         if floppies[0] != roms[0]:
-            print('Inserting "' + roms[0] + '" into DF0')
+            print('Assigning "' + roms[0] + '" to DF0')
 
             floppies[0] = roms[0]
 
 
+def generate_mount_table():
+    cmd_no = 0
+    contents = '[commands]\n'
+
+    for index, ifloppy in enumerate(floppies):
+        contents += 'cmd' + str(cmd_no) + '=ext_disk_eject ' + str(index) + '\n'
+        cmd_no += 1
+
+        if ifloppy:
+            contents += 'cmd' + str(cmd_no) + '=ext_disk_insert_force ' + str(index) + ',' + ifloppy + ',0\n'
+            cmd_no += 1
+
+    print(FS_UAE_TMP_INI + ' contents:')
+    print(contents)
+
+    with open(FS_UAE_TMP_INI, 'w', newline=None) as f:
+        f.write(contents)
+
+
+def send_SIGUSR1_signal():
+    print('Sending SIGUSR1 signal to FS-UAE emulator')
+
+    try:
+        sh.killall('-USR1', 'fs-uae')
+    except sh.ErrorReturnCode_1:
+        print('No process found')
+
+
+partitions = get_partitions(True)
+print_partitions(partitions)
+
+insert_mounted(partitions, None, True)
+generate_mount_table()
+send_SIGUSR1_signal()
+
 while True:
-    partitions = get_removable_partitions()
+    partitions = get_partitions(True)
 
     if not old_partitions or str(old_partitions) != str(partitions):
         # something new
         if old_partitions:
             eject_unmounted(partitions, old_partitions)
             insert_mounted(partitions, old_partitions)
+            generate_mount_table()
+            send_SIGUSR1_signal()
             mount_partitions(partitions)
 
     time.sleep(0.5)
