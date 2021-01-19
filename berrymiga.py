@@ -9,6 +9,7 @@ import fnmatch
 
 from pprint import pprint
 from collections import OrderedDict
+from typing import Optional
 
 
 APP_UNIXNAME = 'berrymiga'

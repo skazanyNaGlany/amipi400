@@ -43,8 +43,84 @@ index ac4073b1..b8fb95a1 100644
  
  void fsemu_action_post_from_main(uint16_t action);
  void fsemu_action_post_from_main_with_state(uint16_t action, int16_t state);
+diff --git a/fsemu/src/fsemu-hud.c b/fsemu/src/fsemu-hud.c
+index d4360d77..cc2defed 100644
+--- a/fsemu/src/fsemu-hud.c
++++ b/fsemu/src/fsemu-hud.c
+@@ -55,6 +55,9 @@ static struct {
+     int vsync_refresh_mismatch;
+ 
+     // GList *notifications;
++
++    bool disable_cursor_notice;
++    bool disable_vsync_notice;
+ } fsemu_hud;
+ 
+ // 440 is a nice size because the notice is symmetrically positioned on the
+@@ -336,7 +339,9 @@ void fsemu_hud_update(void)
+         if (fsemu_hud.vsync_notice.visible_until == 0) {
+             // Initially show after a small delay
+             if (now - first_update_at > 2500 * 1000) {
+-                fsemu_hud.vsync_notice.visible_until = now + 7500 * 1000;
++                if (!fsemu_hud.disable_vsync_notice) {
++                    fsemu_hud.vsync_notice.visible_until = now + 7500 * 1000;
++                }
+             }
+         }
+     }
+@@ -347,7 +352,10 @@ void fsemu_hud_update(void)
+             if (!fsemu_hud.mouse_was_captured) {
+                 // FIXME: Shorter delays later
+                 // FIXME: Only long duration if cursor captured from start
+-                fsemu_hud.cursor_notice.visible_until = now + 7000 * 1000;
++                if (!fsemu_hud.disable_cursor_notice) {
++                    fsemu_hud.cursor_notice.visible_until = now + 7000 * 1000;
++                }
++
+                 fsemu_hud.mouse_was_captured = true;
+             }
+         }
+@@ -408,6 +416,8 @@ static void fsemu_hud_quit(void)
+ 
+ void fsemu_hud_init(void)
+ {
++    const char *value;
++
+     fsemu_thread_assert_main();
+     if (fsemu_hud.initialized) {
+         return;
+@@ -429,6 +439,16 @@ void fsemu_hud_init(void)
+     fsemu_hud.notice_subtitle_color = FSEMU_RGBA(0xffffffaa);
+ 
+     fsemu_hud_init_standard_notices();
++
++    value = fs_config_get_const_string("disable_cursor_notice");
++    if (value && atoi(value)) {
++        fsemu_hud.disable_cursor_notice = 1;
++    }
++
++    value = fs_config_get_const_string("disable_vsync_notice");
++    if (value && atoi(value)) {
++        fsemu_hud.disable_vsync_notice = 1;
++    }
+ }
+ 
+ // ----------------------------------------------------------------------------
+diff --git a/fsemu/src/fsemu-hud.h b/fsemu/src/fsemu-hud.h
+index 54714fc5..a6a5add5 100644
+--- a/fsemu/src/fsemu-hud.h
++++ b/fsemu/src/fsemu-hud.h
+@@ -16,6 +16,8 @@ typedef uint64_t fsemu_hud_id_t;
+ #define FSEMU_HUD_NOTICATION_ID(a, b, c, d, e) (a + b + c + d + e)
+ // FSEMU_HUD_NOTICATION_ID("fsemu_osmenu_no_menu"),
+ 
++const char *fs_config_get_const_string(const char *key);
++
+ void fsemu_hud_init(void);
+ void fsemu_hud_update(void);
+ 
 diff --git a/fsemu/src/fsemu-sdlwindow.c b/fsemu/src/fsemu-sdlwindow.c
-index 97dc8df8..bffbc2b4 100644
+index 97dc8df8..ba06cdc4 100644
 --- a/fsemu/src/fsemu-sdlwindow.c
 +++ b/fsemu/src/fsemu-sdlwindow.c
 @@ -64,6 +64,8 @@ static struct {
@@ -83,7 +159,7 @@ index 97dc8df8..bffbc2b4 100644
      if (fsemu_sdlwindow.initialized) {
          return;
      }
-@@ -1204,6 +1210,12 @@ void fsemu_sdlwindow_init(void)
+@@ -1204,6 +1210,20 @@ void fsemu_sdlwindow_init(void)
      // One would think the default value was 0 already, but this does not
      // seem to always be the case.
      fsemu_sdlwindow.swap_interval = -1337;
@@ -93,6 +169,14 @@ index 97dc8df8..bffbc2b4 100644
 +
 +    value = fs_config_get_const_string("disable_mod_key");
 +    fsemu_sdlwindow.disable_mod_key = value ? !!atoi(value) : false;
++
++    value = fs_config_get_const_string("disable_keyboard_shortcuts");
++    fsemu_sdlwindow.full_keyboard_emulation = value ? !!atoi(value) : false;
++
++    value = fs_config_get_const_string("enable_stretch_mode");
++    if (value && atoi(value)) {
++        fsemu_layout_cycle_stretch_mode();
++    }
  }
  
  #endif  // FSEMU_SDL
