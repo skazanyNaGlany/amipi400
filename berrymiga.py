@@ -6,10 +6,12 @@ import os
 import tempfile
 import sys
 import fnmatch
+import re
 
 from pprint import pprint
 from collections import OrderedDict
 from typing import Optional
+from io import StringIO
 
 
 APP_UNIXNAME = 'berrymiga'
@@ -21,6 +23,7 @@ COUNT_FLOPPIES = 1
 floppies = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
 old_partitions = None
+first_run = True
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
@@ -40,33 +43,30 @@ def get_partition_label(raw_partitions, device_pathname: str, default: str) ->  
     return default
 
 
-def get_partitions(removables_only: Optional[bool] = False) -> OrderedDict:
-    if removables_only:
-        disks = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk') if device.attributes.asstring('removable') == "1"]
-    else:
-        disks = [device for device in context.list_devices(subsystem='block', DEVTYPE='disk')]
-
-    raw_partitions = context.list_devices(subsystem='block', DEVTYPE='partition')
+def get_partitions() -> OrderedDict:
+    raw_disks = list(device for device in context.list_devices(subsystem='block', DEVTYPE='disk'))
+    raw_partitions = list(context.list_devices(subsystem='block', DEVTYPE='partition'))
     return_partitions = OrderedDict()
+    all_blocks = raw_disks+raw_partitions
 
-    for device in disks:
-        partitions = [device.device_node for device in context.list_devices(subsystem='block', DEVTYPE='partition', parent=device)]
+    for idevice in all_blocks:
+        attributes = list(idevice.attributes.available_attributes)
 
-        for ipartition in partitions:
-            if ipartition not in return_partitions:
-                return_partitions[ipartition] = {
-                    'mountpoint': None,
-                    'internal_mountpoint': os.path.join(
-                        OWN_MOUNT_POINT_PREFIX,
-                        get_relative_path(ipartition)
-                    ),
-                    'removable': device.attributes.asstring('removable') == '1',
-                    'label': get_partition_label(raw_partitions, ipartition, '')
-                }
+        device_data = {
+            'mountpoint': '',
+            'internal_mountpoint': os.path.join(
+                OWN_MOUNT_POINT_PREFIX,
+                get_relative_path(idevice.device_node)
+            ),
+            'removable': 'removable' in attributes,
+            'label': idevice.get('ID_FS_LABEL', '')
+        }
 
-        for p in psutil.disk_partitions():
-            if p.device in partitions:
-                return_partitions[p.device]['mountpoint'] = p.mountpoint
+        for ipartition in psutil.disk_partitions():
+            if ipartition.device == idevice.device_node:
+                device_data['mountpoint'] = ipartition.mountpoint
+
+        return_partitions[idevice.device_node] = device_data
 
     return return_partitions
 
@@ -76,13 +76,21 @@ def mount_partitions(partitions: dict) -> list:
     mounted = []
 
     for key, value in partitions.items():
-        if not value['removable'] or value['mountpoint']:
+        if value['mountpoint'] or not value['label'].startswith('BM_DF'):
             continue
+
+        # if not value['removable'] or value['mountpoint']:
+        #     continue
 
         print('Mounting ' + key + ' as ' + value['internal_mountpoint'])
 
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
-        sh.fsck('-y', key)
+
+        try:
+            sh.fsck('-y', key)
+        except sh.ErrorReturnCode_1 as x1:
+            print(str(x1))
+
         sh.mount(key, value['internal_mountpoint'])
 
         mounted.append(key)
@@ -101,15 +109,17 @@ def print_partitions(partitions: dict):
 
         print('  mountpoint: ' + str(value['mountpoint']))
         print('  internal_mountpoint: ' + value['internal_mountpoint'])
-        print('  removable: ' + str(value['removable']))
+        # print('  removable: ' + str(value['removable']))
         print('  label: ' + str(value['label']))
 
         print()
 
 
-def eject_unmounted(partitions: dict, old_partitions: dict):
+def eject_unmounted(partitions: dict, old_partitions: dict) -> int:
     # eject all ADFs that file-system is unmounted
     # but was mounted before
+    count_ejected = 0
+
     for key, value in old_partitions.items():
         mounted = True
 
@@ -131,6 +141,10 @@ def eject_unmounted(partitions: dict, old_partitions: dict):
 
                     floppies[0] = None
 
+                    count_ejected += 1
+
+    return count_ejected
+
 
 def insert_mounted_floppy(ipartition: str, ipartition_data, force: Optional[bool] = False):
     new_mounted = False
@@ -144,7 +158,7 @@ def insert_mounted_floppy(ipartition: str, ipartition_data, force: Optional[bool
 
         if not new_mounted:
             for key2, value2 in old_partitions.items():
-                if key2 == ipartition and not value2['mountpoint']:
+                if key2 == ipartition and (not value2['mountpoint'] or not value2['label']):
                     new_mounted = True
                     break
 
@@ -161,7 +175,7 @@ def insert_mounted_floppy(ipartition: str, ipartition_data, force: Optional[bool
     return False
 
 
-def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool] = False):
+def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool] = False) -> bool:
     # detect new mounted partition and insert ADF
     # if it is present
     for key, value in partitions.items():
@@ -169,8 +183,12 @@ def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool]
             continue
 
         if value['label'].startswith('BM_DF'):
+            print('dddddddddddddd')
             if insert_mounted_floppy(key, value, force):
-                break
+                print('22222222222222')
+                return True
+
+    return False
 
 
 def assign_floppy_from_mountpoint(mountpoint: str):
@@ -221,25 +239,334 @@ def send_SIGUSR1_signal():
         print('No process found')
 
 
-partitions = get_partitions(True)
-print_partitions(partitions)
+# def get_partitions2() -> OrderedDict:
+#     lsblk_buf = StringIO()
+#     pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)"'
+#     lsblk = []
 
-insert_mounted(partitions, None, True)
-generate_mount_table()
-send_SIGUSR1_signal()
+#     sh.lsblk('-P', '-o', 'path,mountpoint,label', '-n', _out=lsblk_buf)
+
+#     for line in lsblk_buf.getvalue().splitlines()[1:]:
+#         line = line.strip()
+
+#         if not line:
+#             continue
+
+
+def get_partitions2() -> OrderedDict:
+    lsblk_buf = StringIO()
+    pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)"'
+    ret = OrderedDict()
+
+    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label', '-n', _out=lsblk_buf)
+
+    for line in lsblk_buf.getvalue().splitlines()[1:]:
+        line = line.strip()
+
+        if not line:
+            continue
+
+        found = re.search(pattern,line).groups()
+
+        full_path = os.path.join(os.path.sep, 'dev', found[0])
+        device_data = {
+            'mountpoint': found[3],
+            'internal_mountpoint': os.path.join(
+                OWN_MOUNT_POINT_PREFIX,
+                get_relative_path(full_path)
+            ),
+            'label': found[4]
+        }
+
+        ret[full_path] = device_data
+
+    return ret
+
+partitions = None
+old_partitions = None
 
 while True:
-    partitions = get_partitions(True)
+    partitions = get_partitions2()
 
-    if not old_partitions or str(old_partitions) != str(partitions):
-        # something new
-        if old_partitions:
-            eject_unmounted(partitions, old_partitions)
-            insert_mounted(partitions, old_partitions)
-            generate_mount_table()
-            send_SIGUSR1_signal()
-            mount_partitions(partitions)
+    if old_partitions and str(old_partitions) != str(partitions):
+        print('changed')
 
-    time.sleep(0.5)
+        print_partitions(partitions)
+        mount_partitions(partitions)
+        eject_unmounted(partitions, old_partitions)
+        insert_mounted(partitions, old_partitions)
+        generate_mount_table()
+        send_SIGUSR1_signal()
 
-    old_partitions = partitions
+        old_partitions = partitions
+
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+        print()
+
+
+        # mount_partitions(partitions)
+
+        # partitions = get_partitions2()
+
+        # eject_unmounted(partitions, old_partitions)
+        # insert_mounted(partitions, old_partitions)
+        # generate_mount_table()
+        # send_SIGUSR1_signal()
+
+    if not old_partitions:
+        old_partitions = partitions
+
+    time.sleep(1)
+
+
+# partitions = get_partitions()
+# print_partitions(partitions)
+# insert_mounted(partitions, None, True)
+# # generate_mount_table()
+# # send_SIGUSR1_signal()
+# mount_partitions(partitions)
+
+# while True:
+#     partitions = get_partitions()
+
+#     if not old_partitions or str(old_partitions) != str(partitions):
+#         # something new
+#         if old_partitions:
+#             eject_unmounted(partitions, old_partitions)
+#             insert_mounted(partitions, old_partitions)
+#             generate_mount_table()
+#             send_SIGUSR1_signal()
+#             mount_partitions(partitions)
+
+#     time.sleep(1)
+
+#     old_partitions = partitions
+
+
+
+
+
+
+
+
+
+# partitions = get_partitions2()
+# print_partitions(partitions)
+# insert_mounted(partitions, None, True)
+# # generate_mount_table()
+# # send_SIGUSR1_signal()
+# mount_partitions(partitions)
+
+# while True:
+#     partitions = get_partitions2()
+
+#     if not old_partitions or str(old_partitions) != str(partitions):
+#         # something new
+#         if old_partitions:
+#             eject_unmounted(partitions, old_partitions)
+#             insert_mounted(partitions, old_partitions)
+#             generate_mount_table()
+#             send_SIGUSR1_signal()
+#             mount_partitions(partitions)
+
+#     time.sleep(0.5)
+
+#     old_partitions = partitions
+
+
+
+
+
+
+
+
+# while True:
+#     partitions = get_partitions2()
+
+#     time.sleep(1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # raw_disks = list(device for device in context.list_devices(subsystem='block', DEVTYPE='disk'))
+    # raw_partitions = list(context.list_devices(subsystem='block', DEVTYPE='partition'))
+    # return_partitions = OrderedDict()
+    # all_blocks = raw_disks+raw_partitions
+
+    # for idevice in all_blocks:
+    #     attributes = list(idevice.attributes.available_attributes)
+
+    #     device_data = {
+    #         'mountpoint': '',
+    #         'internal_mountpoint': os.path.join(
+    #             OWN_MOUNT_POINT_PREFIX,
+    #             get_relative_path(idevice.device_node)
+    #         ),
+    #         'removable': 'removable' in attributes,
+    #         'label': idevice.get('ID_FS_LABEL', '')
+    #     }
+
+    #     for ipartition in psutil.disk_partitions():
+    #         if ipartition.device == idevice.device_node:
+    #             device_data['mountpoint'] = ipartition.mountpoint
+
+    #     return_partitions[idevice.device_node] = device_data
+
+    # return return_partitions
+
+
+# import re
+
+# disk_pattern1 = re.compile(r'.*\ \[[a-z]{3}\]\ .*')
+# disk_pattern2 = re.compile(r'\ busy inodes on changed media or resized disk\ ')
+
+# def dmesg_process(line):
+#     line = line.strip()
+
+#     if line:
+#         print(line)
+
+#         if disk_pattern1.match(line) or disk_pattern2.match(line):
+#             print('ddd')
+
+#             partitions = get_partitions()
+#             print_partitions(partitions)
+
+
+# dmesg_process = sh.dmesg('-Hw', _out=dmesg_process, _bg=True)
+# dmesg_process.wait()
+
+
+# from io import StringIO
+
+
+# dmesg_buf = StringIO()
+
+# sh.dmesg(_out = dmesg_buf)
+
+# while True:
+#     for line in dmesg_buf:
+#         print(line)
+
+#     # time.sleep(1)
+
+#     # time.sleep(1)
+
+
+# # for line in dmesg_buf:
+# #     print(line)
+
+# # print(dmesg_buf.getvalue())
+
+
+# # print(sh.wc(sh.dmesg()))
+
+
+
+# while True:
+#     dmesg = sh.dmesg()
+#     print(dmesg.split())
+
+
+
+
+# while True:
+#     partitions = get_partitions()
+
+#     if first_run:
+#         first_run = False
+#         print_partitions(partitions)
+
+#     mount_partitions(partitions)
+
+#     if old_partitions:
+#         if eject_unmounted(partitions, old_partitions):
+#             generate_mount_table()
+#             send_SIGUSR1_signal()
+
+#     if insert_mounted(partitions, None):
+#         generate_mount_table()
+#         send_SIGUSR1_signal()
+
+#     old_partitions = partitions
+
+#     time.sleep(0.5)
+
+
+
+
+
+
+
+# partitions = get_partitions()
+# print_partitions(partitions)
+# mount_partitions(partitions)
+# insert_mounted(partitions, None, True)
+# generate_mount_table()
+# send_SIGUSR1_signal()
+# # mount_partitions(partitions)
+
+# while True:
+#     partitions = get_partitions()
+
+#     if not old_partitions or str(old_partitions) != str(partitions):
+#         # something new
+#         if old_partitions:
+#             eject_unmounted(partitions, old_partitions)
+#             insert_mounted(partitions, old_partitions)
+#             generate_mount_table()
+#             send_SIGUSR1_signal()
+#             mount_partitions(partitions)
+
+#     time.sleep(0.5)
+
+#     old_partitions = partitions
+
+
+
+
+
+
+
+
+
+# partitions = get_partitions()
+# print_partitions(partitions)
+# insert_mounted(partitions, None, True)
+# # generate_mount_table()
+# # send_SIGUSR1_signal()
+# mount_partitions(partitions)
+
+# while True:
+#     partitions = get_partitions()
+
+#     if not old_partitions or str(old_partitions) != str(partitions):
+#         # something new
+#         if old_partitions:
+#             eject_unmounted(partitions, old_partitions)
+#             insert_mounted(partitions, old_partitions)
+#             generate_mount_table()
+#             send_SIGUSR1_signal()
+#             mount_partitions(partitions)
+
+#     time.sleep(0.5)
+
+#     old_partitions = partitions
