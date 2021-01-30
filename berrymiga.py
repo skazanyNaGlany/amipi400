@@ -87,7 +87,8 @@ def mount_partitions(partitions: dict) -> list:
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         try:
-            sh.fsck('-y', key)
+            # pass
+           sh.fsck('-y', key)
         except sh.ErrorReturnCode_1 as x1:
             print(str(x1))
 
@@ -282,6 +283,27 @@ def get_partitions2() -> OrderedDict:
 
     return ret
 
+
+last_clear_system_cache = 0
+
+
+def clear_system_cache():
+    global last_clear_system_cache
+
+    ts = int(time.time())
+
+    if last_clear_system_cache and ts - last_clear_system_cache <= 32:
+        return
+
+    print('Clearing system cache')
+
+    os.system('sync')
+    os.system('echo 3 > /proc/sys/vm/drop_caches')
+    os.system('sync')
+
+    last_clear_system_cache = ts
+
+
 partitions = None
 old_partitions = None
 
@@ -324,6 +346,8 @@ while True:
 
     if not old_partitions:
         old_partitions = partitions
+
+    clear_system_cache()
 
     time.sleep(1)
 
