@@ -194,7 +194,7 @@ index dadaf917..606bed33 100644
  // fsemu_sdlwindow_init.
  void fsemu_sdlwindow_set_no_event_polling(bool no_event_polling);
 diff --git a/fsemu/src/fsemu-startupinfo.c b/fsemu/src/fsemu-startupinfo.c
-index 9d9b1e3e..784582ea 100644
+index 9d9b1e3e..3c4e59b5 100644
 --- a/fsemu/src/fsemu-startupinfo.c
 +++ b/fsemu/src/fsemu-startupinfo.c
 @@ -102,6 +102,7 @@ void fsemu_startupinfo_init(void)
@@ -205,11 +205,9 @@ index 9d9b1e3e..784582ea 100644
  
  #if 0
      if (fsemu_option_read_const_string(FSEMU_OPTION_GAME_COVER, &string)) {
-@@ -255,30 +256,32 @@ void fsemu_startupinfo_init(void)
-     }
- #endif
+@@ -257,28 +258,31 @@ void fsemu_startupinfo_init(void)
  
--
+ 
      x = 30;
 +    disable_menu_key_info = fs_config_get_const_string("disable_menu_key_info");
  
@@ -601,3 +599,17 @@ index 2d549ac6..6de91613 100644
  int amiga_floppy_set_from_list(int drive, int index)
  {
      write_log("insert floppy (%d) into drive (%d)\n", index, drive);
+diff --git a/src/zfile.cpp b/src/zfile.cpp
+index a976a26a..fedbdec8 100644
+--- a/src/zfile.cpp
++++ b/src/zfile.cpp
+@@ -2511,6 +2511,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
+ 	int pos, size;
+ 	uae_u32 crc;
+ 
++	// test - disable crc32
++	return 0;
++
+ 	if (!f)
+ 		return 0;
+ 	if (f->data)
