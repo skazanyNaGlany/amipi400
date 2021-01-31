@@ -24,6 +24,10 @@ floppies = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
 old_partitions = None
 first_run = True
+last_clear_system_cache_ts = 0
+partitions = None
+old_partitions = None
+
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
@@ -120,6 +124,9 @@ def eject_unmounted(partitions: dict, old_partitions: dict) -> int:
     # eject all ADFs that file-system is unmounted
     # but was mounted before
     count_ejected = 0
+
+    if not old_partitions:
+        return count_ejected
 
     for key, value in old_partitions.items():
         mounted = True
@@ -240,20 +247,6 @@ def send_SIGUSR1_signal():
         print('No process found')
 
 
-# def get_partitions2() -> OrderedDict:
-#     lsblk_buf = StringIO()
-#     pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)"'
-#     lsblk = []
-
-#     sh.lsblk('-P', '-o', 'path,mountpoint,label', '-n', _out=lsblk_buf)
-
-#     for line in lsblk_buf.getvalue().splitlines()[1:]:
-#         line = line.strip()
-
-#         if not line:
-#             continue
-
-
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
     pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)"'
@@ -284,15 +277,12 @@ def get_partitions2() -> OrderedDict:
     return ret
 
 
-last_clear_system_cache = 0
-
-
 def clear_system_cache():
-    global last_clear_system_cache
+    global last_clear_system_cache_ts
 
     ts = int(time.time())
 
-    if last_clear_system_cache and ts - last_clear_system_cache <= 32:
+    if last_clear_system_cache_ts and ts - last_clear_system_cache_ts <= 32:
         return
 
     print('Clearing system cache')
@@ -301,17 +291,14 @@ def clear_system_cache():
     os.system('echo 3 > /proc/sys/vm/drop_caches')
     os.system('sync')
 
-    last_clear_system_cache = ts
+    last_clear_system_cache_ts = ts
 
-
-partitions = None
-old_partitions = None
 
 while True:
     partitions = get_partitions2()
 
-    if old_partitions and str(old_partitions) != str(partitions):
-        print('changed')
+    if str(old_partitions) != str(partitions):
+        print('Changed')
 
         print_partitions(partitions)
         mount_partitions(partitions)
@@ -334,263 +321,9 @@ while True:
         print()
         print()
 
-
-        # mount_partitions(partitions)
-
-        # partitions = get_partitions2()
-
-        # eject_unmounted(partitions, old_partitions)
-        # insert_mounted(partitions, old_partitions)
-        # generate_mount_table()
-        # send_SIGUSR1_signal()
-
     if not old_partitions:
         old_partitions = partitions
 
     clear_system_cache()
 
     time.sleep(1)
-
-
-# partitions = get_partitions()
-# print_partitions(partitions)
-# insert_mounted(partitions, None, True)
-# # generate_mount_table()
-# # send_SIGUSR1_signal()
-# mount_partitions(partitions)
-
-# while True:
-#     partitions = get_partitions()
-
-#     if not old_partitions or str(old_partitions) != str(partitions):
-#         # something new
-#         if old_partitions:
-#             eject_unmounted(partitions, old_partitions)
-#             insert_mounted(partitions, old_partitions)
-#             generate_mount_table()
-#             send_SIGUSR1_signal()
-#             mount_partitions(partitions)
-
-#     time.sleep(1)
-
-#     old_partitions = partitions
-
-
-
-
-
-
-
-
-
-# partitions = get_partitions2()
-# print_partitions(partitions)
-# insert_mounted(partitions, None, True)
-# # generate_mount_table()
-# # send_SIGUSR1_signal()
-# mount_partitions(partitions)
-
-# while True:
-#     partitions = get_partitions2()
-
-#     if not old_partitions or str(old_partitions) != str(partitions):
-#         # something new
-#         if old_partitions:
-#             eject_unmounted(partitions, old_partitions)
-#             insert_mounted(partitions, old_partitions)
-#             generate_mount_table()
-#             send_SIGUSR1_signal()
-#             mount_partitions(partitions)
-
-#     time.sleep(0.5)
-
-#     old_partitions = partitions
-
-
-
-
-
-
-
-
-# while True:
-#     partitions = get_partitions2()
-
-#     time.sleep(1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # raw_disks = list(device for device in context.list_devices(subsystem='block', DEVTYPE='disk'))
-    # raw_partitions = list(context.list_devices(subsystem='block', DEVTYPE='partition'))
-    # return_partitions = OrderedDict()
-    # all_blocks = raw_disks+raw_partitions
-
-    # for idevice in all_blocks:
-    #     attributes = list(idevice.attributes.available_attributes)
-
-    #     device_data = {
-    #         'mountpoint': '',
-    #         'internal_mountpoint': os.path.join(
-    #             OWN_MOUNT_POINT_PREFIX,
-    #             get_relative_path(idevice.device_node)
-    #         ),
-    #         'removable': 'removable' in attributes,
-    #         'label': idevice.get('ID_FS_LABEL', '')
-    #     }
-
-    #     for ipartition in psutil.disk_partitions():
-    #         if ipartition.device == idevice.device_node:
-    #             device_data['mountpoint'] = ipartition.mountpoint
-
-    #     return_partitions[idevice.device_node] = device_data
-
-    # return return_partitions
-
-
-# import re
-
-# disk_pattern1 = re.compile(r'.*\ \[[a-z]{3}\]\ .*')
-# disk_pattern2 = re.compile(r'\ busy inodes on changed media or resized disk\ ')
-
-# def dmesg_process(line):
-#     line = line.strip()
-
-#     if line:
-#         print(line)
-
-#         if disk_pattern1.match(line) or disk_pattern2.match(line):
-#             print('ddd')
-
-#             partitions = get_partitions()
-#             print_partitions(partitions)
-
-
-# dmesg_process = sh.dmesg('-Hw', _out=dmesg_process, _bg=True)
-# dmesg_process.wait()
-
-
-# from io import StringIO
-
-
-# dmesg_buf = StringIO()
-
-# sh.dmesg(_out = dmesg_buf)
-
-# while True:
-#     for line in dmesg_buf:
-#         print(line)
-
-#     # time.sleep(1)
-
-#     # time.sleep(1)
-
-
-# # for line in dmesg_buf:
-# #     print(line)
-
-# # print(dmesg_buf.getvalue())
-
-
-# # print(sh.wc(sh.dmesg()))
-
-
-
-# while True:
-#     dmesg = sh.dmesg()
-#     print(dmesg.split())
-
-
-
-
-# while True:
-#     partitions = get_partitions()
-
-#     if first_run:
-#         first_run = False
-#         print_partitions(partitions)
-
-#     mount_partitions(partitions)
-
-#     if old_partitions:
-#         if eject_unmounted(partitions, old_partitions):
-#             generate_mount_table()
-#             send_SIGUSR1_signal()
-
-#     if insert_mounted(partitions, None):
-#         generate_mount_table()
-#         send_SIGUSR1_signal()
-
-#     old_partitions = partitions
-
-#     time.sleep(0.5)
-
-
-
-
-
-
-
-# partitions = get_partitions()
-# print_partitions(partitions)
-# mount_partitions(partitions)
-# insert_mounted(partitions, None, True)
-# generate_mount_table()
-# send_SIGUSR1_signal()
-# # mount_partitions(partitions)
-
-# while True:
-#     partitions = get_partitions()
-
-#     if not old_partitions or str(old_partitions) != str(partitions):
-#         # something new
-#         if old_partitions:
-#             eject_unmounted(partitions, old_partitions)
-#             insert_mounted(partitions, old_partitions)
-#             generate_mount_table()
-#             send_SIGUSR1_signal()
-#             mount_partitions(partitions)
-
-#     time.sleep(0.5)
-
-#     old_partitions = partitions
-
-
-
-
-
-
-
-
-
-# partitions = get_partitions()
-# print_partitions(partitions)
-# insert_mounted(partitions, None, True)
-# # generate_mount_table()
-# # send_SIGUSR1_signal()
-# mount_partitions(partitions)
-
-# while True:
-#     partitions = get_partitions()
-
-#     if not old_partitions or str(old_partitions) != str(partitions):
-#         # something new
-#         if old_partitions:
-#             eject_unmounted(partitions, old_partitions)
-#             insert_mounted(partitions, old_partitions)
-#             generate_mount_table()
-#             send_SIGUSR1_signal()
-#             mount_partitions(partitions)
-
-#     time.sleep(0.5)
-
-#     old_partitions = partitions
