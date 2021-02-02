@@ -16,11 +16,12 @@ from io import StringIO
 
 APP_UNIXNAME = 'berrymiga'
 OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
-FS_UAE_PATHNAME = '/home/sng/projects.local/fs-uae.devbox/src/fs-uae/fs-uae'
-FS_UAE_TMP_INI = os.path.join(os.path.dirname(FS_UAE_PATHNAME), 'fs-uae.tmp.ini')
+FS_UAE_PATHNAME = '/home/pi/projects.local/amiberry/amiberry'
+FS_UAE_TMP_INI = os.path.join(os.path.dirname(FS_UAE_PATHNAME), 'amiberry.tmp.ini')
 COUNT_FLOPPIES = 1
 
 floppies = [None for x in range(COUNT_FLOPPIES)]
+floppies_sizes = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
 old_partitions = None
 first_run = True
@@ -95,8 +96,10 @@ def mount_partitions(partitions: dict) -> list:
            sh.fsck('-y', key)
         except sh.ErrorReturnCode_1 as x1:
             print(str(x1))
+        except sh.ErrorReturnCode_6 as x2:
+            print(str(x2))
 
-        sh.mount(key, value['internal_mountpoint'])
+        sh.mount(key, '-ouser,umask=0000', value['internal_mountpoint'])
 
         mounted.append(key)
 
@@ -118,6 +121,13 @@ def print_partitions(partitions: dict):
         print('  label: ' + str(value['label']))
 
         print()
+
+
+def force_umount(pathname: str):
+    try:
+        sh.umount('-l', pathname)
+    except sh.ErrorReturnCode_1:
+        print('Failed to force-umount ' + pathname + ', maybe it is umounted already')
 
 
 def eject_unmounted(partitions: dict, old_partitions: dict) -> int:
@@ -143,11 +153,14 @@ def eject_unmounted(partitions: dict, old_partitions: dict) -> int:
         if not mounted:
             print('Unmounted ' + key)
 
+            force_umount(key)
+
             if floppies[0]:
                 if floppies[0].startswith(value['mountpoint']):
                     print('Ejecting DF0')
 
                     floppies[0] = None
+                    floppies_sizes[0] = None
 
                     count_ejected += 1
 
@@ -176,6 +189,11 @@ def insert_mounted_floppy(ipartition: str, ipartition_data, force: Optional[bool
     if new_mounted:
         print('New mounted ' + ipartition)
 
+        try:
+            sh.chmod('-R', 'a+rw', ipartition_data['mountpoint'])
+        except sh.ErrorReturnCode_1 as x1:
+            print(str(x1))
+
         assign_floppy_from_mountpoint(ipartition_data['mountpoint'])
 
         return True
@@ -191,9 +209,7 @@ def insert_mounted(partitions: dict, old_partitions: dict, force: Optional[bool]
             continue
 
         if value['label'].startswith('BM_DF'):
-            print('dddddddddddddd')
             if insert_mounted_floppy(key, value, force):
-                print('22222222222222')
                 return True
 
     return False
@@ -217,6 +233,7 @@ def assign_floppy_from_mountpoint(mountpoint: str):
             print('Assigning "' + roms[0] + '" to DF0')
 
             floppies[0] = roms[0]
+            floppies_sizes[0] = os.path.getsize(roms[0])
 
 
 def generate_mount_table():
@@ -234,15 +251,18 @@ def generate_mount_table():
     print(FS_UAE_TMP_INI + ' contents:')
     print(contents)
 
-    with open(FS_UAE_TMP_INI, 'w', newline=None) as f:
+    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
         f.write(contents)
+
+    #clear_system_cache()
 
 
 def send_SIGUSR1_signal():
     print('Sending SIGUSR1 signal to FS-UAE emulator')
 
     try:
-        sh.killall('-USR1', 'fs-uae')
+        #sh.killall('-USR1', 'fs-uae')
+        sh.killall('-USR1', 'amiberry')
     except sh.ErrorReturnCode_1:
         print('No process found')
 
@@ -254,7 +274,7 @@ def get_partitions2() -> OrderedDict:
 
     sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label', '-n', _out=lsblk_buf)
 
-    for line in lsblk_buf.getvalue().splitlines()[1:]:
+    for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
 
         if not line:
@@ -277,21 +297,85 @@ def get_partitions2() -> OrderedDict:
     return ret
 
 
-def clear_system_cache():
+def clear_system_cache(force = False):
     global last_clear_system_cache_ts
 
     ts = int(time.time())
 
-    if last_clear_system_cache_ts and ts - last_clear_system_cache_ts <= 32:
+    if not force and last_clear_system_cache_ts and ts - last_clear_system_cache_ts <= 32:
         return
 
     print('Clearing system cache')
 
     os.system('sync')
-    os.system('echo 3 > /proc/sys/vm/drop_caches')
+    #os.system('echo 3 > /proc/sys/vm/drop_caches')
+    os.system('echo 1 > /proc/sys/vm/drop_caches')
     os.system('sync')
 
     last_clear_system_cache_ts = ts
+
+
+def sync_disks():
+    os.system('sync')
+
+
+def from_filesize(spec, si=True):
+    decade = 1000 if si else 1024
+    suffixes = tuple('BKMGTP')
+
+    num = float(spec[:-1])
+    s = spec[-1]
+    i = suffixes.index(s)
+
+    for n in range(i):
+        num *= decade
+
+    return int(num)
+
+
+def get_file_cached_size(pathname: str) -> int:
+    fincore_buf = StringIO()
+
+    try:
+        sh.fincore('-b', pathname, _out=fincore_buf)
+    except sh.ErrorReturnCode_1:
+        return 0
+
+    for line in fincore_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        line = line.replace('  ', ' ')
+        parts = [ipart.strip() for ipart in line.split(' ', 4) if ipart.strip()]
+
+        if len(parts) == 4 and parts[3] == pathname:
+            return int(parts[0])
+            # return from_filesize(parts[0])
+
+    return 0
+
+
+def check_cache_filled() -> bool:
+    for ifloppy in floppies:
+        if not ifloppy:
+            continue
+
+        file_size = floppies_sizes[0]
+
+        if not file_size:
+            continue
+
+        cached_size = get_file_cached_size(ifloppy)
+        # print(file_size)
+        # print(cached_size)
+
+        if cached_size >= 99 / 100 * file_size:
+            print(ifloppy + ' cached size ' + str(cached_size))
+            return True
+
+    return False
 
 
 while True:
@@ -324,6 +408,12 @@ while True:
     if not old_partitions:
         old_partitions = partitions
 
-    clear_system_cache()
+    # clear_system_cache()
+
+    if check_cache_filled():
+        clear_system_cache(True)
+
+    # sync_disks()
 
     time.sleep(1)
+

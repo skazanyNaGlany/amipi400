@@ -1,0 +1,370 @@
+diff --git a/Android.mk b/Android.mk
+index ee2df16a..6ba52349 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -182,7 +182,8 @@ LOCAL_SRC_FILES := src/archivers/7z/BraIA64.c \
+                     src/osdep/gui/main_window.cpp \
+                     src/osdep/gui/Navigation.cpp \
+                     src/osdep/gui/androidsdl_event.cpp \
+-                    src/osdep/gui/PanelOnScreen.cpp
++                    src/osdep/gui/PanelOnScreen.cpp \
++                    src/berrymiga/handler.cpp
+ 
+ ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
+     LOCAL_SRC_FILES += src/osdep/aarch64_helper_min.s
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index caa088f0..ddc66799 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -166,6 +166,7 @@ set(SRC_FILES
+         src/osdep/amiberry_rp9.cpp
+         src/osdep/amiberry_mem.cpp
+         src/osdep/amiberry_whdbooter.cpp
++        src/berrymiga/handler.cpp
+         src/osdep/sigsegv_handler.cpp
+         src/sounddep/sound.cpp
+         src/osdep/gui/InGameMessage.cpp
+diff --git a/Makefile b/Makefile
+index 4872239e..f3b6ad07 100644
+--- a/Makefile
++++ b/Makefile
+@@ -438,7 +438,9 @@ OBJS =	\
+ 	src/osdep/gui/PanelPrio.o \
+ 	src/osdep/gui/PanelSavestate.o \
+ 	src/osdep/gui/main_window.o \
+-	src/osdep/gui/Navigation.o
++	src/osdep/gui/Navigation.o \
++	src/berrymiga/handler.o \
++	src/berrymiga/ini-exec.o
+ 
+ ifeq ($(ANDROID), 1)
+ OBJS += src/osdep/gui/androidsdl_event.o \
+diff --git a/src/berrymiga/consts.h b/src/berrymiga/consts.h
+new file mode 100644
+index 00000000..ed1296d8
+--- /dev/null
++++ b/src/berrymiga/consts.h
+@@ -0,0 +1,8 @@
++#ifndef BERRYMIGA_CONSTS_H_
++#define BERRYMIGA_CONSTS_H_
++
++#define TMP_INI_FILE "amiberry.tmp.ini"
++#define MAX_LINE_LENGTH 1024
++#define APP_NAME "BERRYMIGA"
++
++#endif  // BERRYMIGA_CONSTS_H_
+diff --git a/src/berrymiga/externals.h b/src/berrymiga/externals.h
+new file mode 100644
+index 00000000..6a4fd76b
+--- /dev/null
++++ b/src/berrymiga/externals.h
+@@ -0,0 +1,7 @@
++#ifndef BERRYMIGA_EXTERNALS_H_
++#define BERRYMIGA_EXTERNALS_H_
++
++void ext_disk_eject(int num);
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++
++#endif  // BERRYMIGA_EXTERNALS_H_
+diff --git a/src/berrymiga/handler.cpp b/src/berrymiga/handler.cpp
+new file mode 100644
+index 00000000..8d0348ad
+--- /dev/null
++++ b/src/berrymiga/handler.cpp
+@@ -0,0 +1,22 @@
++#include "consts.h"
++#include "handler.h"
++#include "ini-exec.h"
++
++#include <stdio.h>
++#include <signal.h>
++#include <unistd.h>
++
++
++void SIGUSR1_handler(int signum)
++{
++    printf("[%s] received USR1 signal\n", APP_NAME);
++
++    execute_ini_file(TMP_INI_FILE);
++}
++
++
++void berrymiga_handler_init() {
++    printf("[%s] initialise BM handlers\n", APP_NAME);
++
++    signal(SIGUSR1, SIGUSR1_handler);
++}
+diff --git a/src/berrymiga/handler.h b/src/berrymiga/handler.h
+new file mode 100644
+index 00000000..e5b85bc6
+--- /dev/null
++++ b/src/berrymiga/handler.h
+@@ -0,0 +1,7 @@
++#ifndef BERRYMIGA_HANDLER_H_
++#define BERRYMIGA_HANDLER_H_
++
++void SIGUSR1_handler(int signum);
++void berrymiga_handler_init();
++
++#endif  // BERRYMIGA_HANDLER_H_
+diff --git a/src/berrymiga/ini-exec.cpp b/src/berrymiga/ini-exec.cpp
+new file mode 100644
+index 00000000..f164b0cf
+--- /dev/null
++++ b/src/berrymiga/ini-exec.cpp
+@@ -0,0 +1,182 @@
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++
++#include "ini-exec.h"
++#include "consts.h"
++#include "externals.h"
++
++
++void _clean_line(char *line) {
++    // FIXME: implement better trim function
++    char buffer[MAX_LINE_LENGTH];
++    int line_length = strlen(line);
++
++    if (!line_length) {
++        return;
++    }
++
++    memset(buffer, 0, MAX_LINE_LENGTH);
++    strncpy(buffer, line, MAX_LINE_LENGTH);
++
++    if (buffer[line_length - 1] == '\n') {
++        buffer[line_length - 1] = 0;
++    }
++
++    line_length = strlen(buffer);
++
++    if (!line_length) {
++        return;
++    }
++
++    if (buffer[line_length - 1] == '\r') {
++        buffer[line_length - 1] = 0;
++    }
++
++    strncpy(line, buffer, MAX_LINE_LENGTH);
++}
++
++
++int _str_copy_from_char(char *str, char c, size_t maxlen) {
++    int char_at = 0;
++    char *pch;
++    char buffer[maxlen];
++
++    pch = strchr(str, c);
++
++    if (!pch) {
++        return 0;
++    }
++
++    char_at = pch - str + 1;
++
++    memset(buffer, 0, maxlen);
++    strncpy(buffer, &str[char_at], maxlen);
++    strncpy(str, buffer, maxlen);
++
++    return 1;
++}
++
++
++int _str_starts_with(const char *str, const char *pre) {
++    size_t lenpre = strlen(pre),
++           lenstr = strlen(str);
++    return lenstr < lenpre ? 0 : memcmp(pre, str, lenpre) == 0;
++}
++
++
++int _execute_command(char *command) {
++    char arguments[MAX_LINE_LENGTH];
++    char arg0[MAX_LINE_LENGTH];
++    char arg1[MAX_LINE_LENGTH];
++    char arg2[MAX_LINE_LENGTH];
++    char *ptr;
++    int ptr_index;
++
++    if (!strlen(command) || command[0] == '#') {
++        return 0;
++    }
++
++    if (strncmp(command, "cmd", 3) != 0) {
++        // skip not cmdX=
++        return 0;
++    }
++
++    printf("[%s] raw command: %s\n", APP_NAME, command);
++
++    if (!_str_copy_from_char(command, '=', MAX_LINE_LENGTH)) {
++        return 0;
++    }
++
++    printf("[%s] processed command: %s\n", APP_NAME, command);
++
++    if (_str_starts_with(command, "ext_disk_eject ")) {
++        if (!_str_copy_from_char(command, ' ', MAX_LINE_LENGTH)) {
++            return 0;
++        }
++
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        strncpy(arguments, command, MAX_LINE_LENGTH);
++
++        _str_copy_from_char(arguments, ',', MAX_LINE_LENGTH);
++        strncpy(arg0, arguments, MAX_LINE_LENGTH);
++
++        ext_disk_eject(atoi(arg0));
++    }
++    else if (_str_starts_with(command, "ext_disk_insert_force ")) {
++        if (!_str_copy_from_char(command, ' ', MAX_LINE_LENGTH)) {
++            return 0;
++        }
++
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        ptr = strtok(command, ",");
++        ptr_index = 0;
++
++        while (ptr != NULL) {
++            switch (ptr_index) {
++                case 0:
++                    strncpy(arg0, ptr, MAX_LINE_LENGTH);
++                    break;
++                case 1:
++                    strncpy(arg1, ptr, MAX_LINE_LENGTH);
++                    break;
++                case 2:
++                    strncpy(arg2, ptr, MAX_LINE_LENGTH);
++                    break;
++            }
++
++            ptr = strtok(NULL, ",");
++            ptr_index++;
++        }
++
++        ext_disk_insert_force(
++            atoi(arg0),
++            arg1,
++            atoi(arg2)
++        );
++    }
++
++    return 1;
++}
++
++
++int execute_ini_file(const char *pathname) {
++    FILE *file;
++    char line[MAX_LINE_LENGTH];
++    size_t line_length;
++    int commands_mode = 0;
++
++    file = fopen(pathname, "r");
++
++    if (!file) {
++        return 0;
++    }
++
++    while(fgets(line, MAX_LINE_LENGTH, file) != NULL) {
++        _clean_line(line);
++
++        if (!strncmp(line, "[commands]", MAX_LINE_LENGTH)) {
++            // commands
++            commands_mode = 1;
++
++            printf("[%s] executing temporary INI file commands\n", APP_NAME);
++
++            continue;
++        }
++        else if (line[0] == '[') {
++            commands_mode = 0;
++
++            continue;
++        }
++
++        if (commands_mode) {
++            _execute_command(line);
++        }
++    }
++
++    fclose(file);
++
++    return 1;
++}
+diff --git a/src/berrymiga/ini-exec.h b/src/berrymiga/ini-exec.h
+new file mode 100644
+index 00000000..78f03adf
+--- /dev/null
++++ b/src/berrymiga/ini-exec.h
+@@ -0,0 +1,12 @@
++#ifndef BERRYMIGA_INI_EXEC_H_
++#define BERRYMIGA_INI_EXEC_H_
++
++#include <stdio.h>
++
++void _clean_line(char *line);
++int execute_ini_file(const char *pathname);
++int _execute_command(char *command);
++int _str_copy_from_char(char *str, char c, size_t maxlen);
++int _str_starts_with(const char *str, const char *pre);
++
++#endif  // BERRYMIGA_INI_EXEC_H_
+diff --git a/src/disk.cpp b/src/disk.cpp
+index 2e8c716e..6e481f85 100644
+--- a/src/disk.cpp
++++ b/src/disk.cpp
+@@ -2909,6 +2909,14 @@ TCHAR *DISK_history_get (int idx, int type)
+ 	return dfxhistory[type][idx];
+ }
+ 
++void ext_disk_eject(int num) {
++    disk_eject(num);
++}
++
++void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect) {
++    disk_insert_force(num, name, forcedwriteprotect);
++}
++
+ static void disk_insert_2 (int num, const TCHAR *name, bool forced, bool forcedwriteprotect)
+ {
+ 	drive *drv = floppy + num;
+diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
+index 5dc6deee..d7ba5a2e 100644
+--- a/src/osdep/amiberry.cpp
++++ b/src/osdep/amiberry.cpp
+@@ -48,6 +48,8 @@
+ #include "clipboard.h"
+ #include "uae/uae.h"
+ 
++#include "berrymiga/handler.h"
++
+ extern FILE* debugfile;
+ 
+ int pause_emulation;
+@@ -1424,6 +1426,8 @@ int main(int argc, char* argv[])
+ 		abort();
+ 	}
+ 
++	berrymiga_handler_init();
++
+ 	alloc_AmigaMem();
+ 	RescanROMs();
+ 	clipboard_init();
+diff --git a/src/zfile.cpp b/src/zfile.cpp
+index 6bc1330a..a514faf5 100644
+--- a/src/zfile.cpp
++++ b/src/zfile.cpp
+@@ -2435,6 +2435,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
+ 	int pos, size;
+ 	uae_u32 crc;
+ 
++	// test - disable crc32
++	return 0;
++
+ 	if (!f)
+ 		return 0;
+ 	if (f->data)
