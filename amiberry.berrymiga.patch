@@ -55,13 +55,14 @@ index 00000000..ed1296d8
 +#endif  // BERRYMIGA_CONSTS_H_
 diff --git a/src/berrymiga/externals.h b/src/berrymiga/externals.h
 new file mode 100644
-index 00000000..6a4fd76b
+index 00000000..7de9a093
 --- /dev/null
 +++ b/src/berrymiga/externals.h
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +#ifndef BERRYMIGA_EXTERNALS_H_
 +#define BERRYMIGA_EXTERNALS_H_
 +
++void uae_reset(int hardreset, int keyboardreset);
 +void ext_disk_eject(int num);
 +void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
 +
@@ -109,10 +110,10 @@ index 00000000..e5b85bc6
 +#endif  // BERRYMIGA_HANDLER_H_
 diff --git a/src/berrymiga/ini-exec.cpp b/src/berrymiga/ini-exec.cpp
 new file mode 100644
-index 00000000..f164b0cf
+index 00000000..4a0d3632
 --- /dev/null
 +++ b/src/berrymiga/ini-exec.cpp
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,211 @@
 +#include <stdio.h>
 +#include <string.h>
 +#include <stdlib.h>
@@ -250,6 +251,35 @@ index 00000000..f164b0cf
 +            atoi(arg0),
 +            arg1,
 +            atoi(arg2)
++        );
++    }
++    else if (_str_starts_with(command, "uae_reset ")) {
++        if (!_str_copy_from_char(command, ' ', MAX_LINE_LENGTH)) {
++            return 0;
++        }
++
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        ptr = strtok(command, ",");
++        ptr_index = 0;
++
++        while (ptr != NULL) {
++            switch (ptr_index) {
++                case 0:
++                    strncpy(arg0, ptr, MAX_LINE_LENGTH);
++                    break;
++                case 1:
++                    strncpy(arg1, ptr, MAX_LINE_LENGTH);
++                    break;
++            }
++
++            ptr = strtok(NULL, ",");
++            ptr_index++;
++        }
++
++        uae_reset(
++            atoi(arg0),
++            atoi(arg1)
 +        );
 +    }
 +
