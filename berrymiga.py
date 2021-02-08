@@ -12,6 +12,7 @@ from pprint import pprint
 from collections import OrderedDict
 from typing import Optional
 from io import StringIO
+from pynput.keyboard import Key, Listener
 
 
 APP_UNIXNAME = 'berrymiga'
@@ -21,13 +22,14 @@ FS_UAE_TMP_INI = os.path.join(os.path.dirname(FS_UAE_PATHNAME), 'amiberry.tmp.in
 COUNT_FLOPPIES = 1
 
 floppies = [None for x in range(COUNT_FLOPPIES)]
-floppies_sizes = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
 old_partitions = None
 first_run = True
-last_clear_system_cache_ts = 0
 partitions = None
 old_partitions = None
+key_ctrl_pressed = False
+key_alt_pressed = False
+key_delete_pressed = False
 
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
@@ -48,34 +50,6 @@ def get_partition_label(raw_partitions, device_pathname: str, default: str) ->  
     return default
 
 
-def get_partitions() -> OrderedDict:
-    raw_disks = list(device for device in context.list_devices(subsystem='block', DEVTYPE='disk'))
-    raw_partitions = list(context.list_devices(subsystem='block', DEVTYPE='partition'))
-    return_partitions = OrderedDict()
-    all_blocks = raw_disks+raw_partitions
-
-    for idevice in all_blocks:
-        attributes = list(idevice.attributes.available_attributes)
-
-        device_data = {
-            'mountpoint': '',
-            'internal_mountpoint': os.path.join(
-                OWN_MOUNT_POINT_PREFIX,
-                get_relative_path(idevice.device_node)
-            ),
-            'removable': 'removable' in attributes,
-            'label': idevice.get('ID_FS_LABEL', '')
-        }
-
-        for ipartition in psutil.disk_partitions():
-            if ipartition.device == idevice.device_node:
-                device_data['mountpoint'] = ipartition.mountpoint
-
-        return_partitions[idevice.device_node] = device_data
-
-    return return_partitions
-
-
 def mount_partitions(partitions: dict) -> list:
     # just mount new removable drives (as partitions)
     mounted = []
@@ -84,15 +58,11 @@ def mount_partitions(partitions: dict) -> list:
         if value['mountpoint'] or not value['label'].startswith('BM_DF'):
             continue
 
-        # if not value['removable'] or value['mountpoint']:
-        #     continue
-
         print('Mounting ' + key + ' as ' + value['internal_mountpoint'])
 
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         try:
-            # pass
            sh.fsck('-y', key)
         except sh.ErrorReturnCode_1 as x1:
             print(str(x1))
@@ -156,11 +126,10 @@ def eject_unmounted(partitions: dict, old_partitions: dict) -> int:
             force_umount(key)
 
             if floppies[0]:
-                if floppies[0].startswith(value['mountpoint']):
+                if floppies[0]['pathname'].startswith(value['mountpoint']):
                     print('Ejecting DF0')
 
                     floppies[0] = None
-                    floppies_sizes[0] = None
 
                     count_ejected += 1
 
@@ -229,11 +198,15 @@ def assign_floppy_from_mountpoint(mountpoint: str):
     roms = sorted(roms)
 
     if roms:
-        if floppies[0] != roms[0]:
+        if not floppies[0] or floppies[0]['pathname'] != roms[0]:
             print('Assigning "' + roms[0] + '" to DF0')
 
-            floppies[0] = roms[0]
-            floppies_sizes[0] = os.path.getsize(roms[0])
+            floppies[0] = {
+                'pathname': roms[0],
+                'file_size': os.path.getsize(roms[0]),
+                'last_access_ts': 0,
+                'last_cached_size': 0
+            }
 
 
 def generate_mount_table():
@@ -245,7 +218,7 @@ def generate_mount_table():
         cmd_no += 1
 
         if ifloppy:
-            contents += 'cmd' + str(cmd_no) + '=ext_disk_insert_force ' + str(index) + ',' + ifloppy + ',0\n'
+            contents += 'cmd' + str(cmd_no) + '=ext_disk_insert_force ' + str(index) + ',' + ifloppy['pathname'] + ',0\n'
             cmd_no += 1
 
     print(FS_UAE_TMP_INI + ' contents:')
@@ -254,14 +227,22 @@ def generate_mount_table():
     with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
         f.write(contents)
 
-    #clear_system_cache()
+
+def generate_soft_reset():
+    contents = '[commands]\n'
+    contents += 'cmd0=uae_reset 0,0\n'
+
+    print(FS_UAE_TMP_INI + ' contents:')
+    print(contents)
+
+    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
+        f.write(contents)
 
 
 def send_SIGUSR1_signal():
-    print('Sending SIGUSR1 signal to FS-UAE emulator')
+    print('Sending SIGUSR1 signal to Amiberry emulator')
 
     try:
-        #sh.killall('-USR1', 'fs-uae')
         sh.killall('-USR1', 'amiberry')
     except sh.ErrorReturnCode_1:
         print('No process found')
@@ -298,24 +279,11 @@ def get_partitions2() -> OrderedDict:
 
 
 def clear_system_cache(force = False):
-    global last_clear_system_cache_ts
-
-    ts = int(time.time())
-
-    if not force and last_clear_system_cache_ts and ts - last_clear_system_cache_ts <= 32:
-        return
-
     print('Clearing system cache')
 
     os.system('sync')
     #os.system('echo 3 > /proc/sys/vm/drop_caches')
     os.system('echo 1 > /proc/sys/vm/drop_caches')
-    os.system('sync')
-
-    last_clear_system_cache_ts = ts
-
-
-def sync_disks():
     os.system('sync')
 
 
@@ -352,31 +320,69 @@ def get_file_cached_size(pathname: str) -> int:
 
         if len(parts) == 4 and parts[3] == pathname:
             return int(parts[0])
-            # return from_filesize(parts[0])
 
     return 0
 
 
-def check_cache_filled() -> bool:
+def check_need_clear_cache() -> bool:
+    ts = int(time.time())
+
     for ifloppy in floppies:
         if not ifloppy:
             continue
 
-        file_size = floppies_sizes[0]
+        file_size = ifloppy['file_size']
 
         if not file_size:
             continue
 
-        cached_size = get_file_cached_size(ifloppy)
-        # print(file_size)
-        # print(cached_size)
+        new_cached_size = get_file_cached_size(ifloppy['pathname'])
 
-        if cached_size >= 99 / 100 * file_size:
-            print(ifloppy + ' cached size ' + str(cached_size))
-            return True
+        if new_cached_size > ifloppy['last_cached_size']:
+            ifloppy['last_cached_size'] = new_cached_size
+            ifloppy['last_access_ts'] = ts
+
+        if ifloppy['last_access_ts'] and ts - ifloppy['last_access_ts'] >= 60:
+            if ifloppy['last_cached_size'] >= 99 / 100 * file_size:
+                print(str(ts - ifloppy['last_access_ts']))
+                print(ifloppy)
+
+                ifloppy['last_cached_size'] = 0
+                ifloppy['last_access_ts'] = 0
+
+                return True
 
     return False
 
+
+def on_key_press(key):
+    global key_ctrl_pressed
+    global key_alt_pressed
+    global key_delete_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = True
+
+    if key == Key.alt:
+        key_alt_pressed = True
+
+    if key == Key.delete:
+        key_delete_pressed = True
+
+    if key_ctrl_pressed and key_alt_pressed and key_delete_pressed:
+        key_ctrl_pressed = False
+        key_alt_pressed = False
+        key_delete_pressed = False
+
+        generate_soft_reset()
+        send_SIGUSR1_signal()
+        clear_system_cache()
+
+
+keyboard_listener = Listener(on_press=on_key_press)
+keyboard_listener.start()
+
+clear_system_cache(True)
 
 while True:
     partitions = get_partitions2()
@@ -390,7 +396,7 @@ while True:
         insert_mounted(partitions, old_partitions)
         generate_mount_table()
         send_SIGUSR1_signal()
-
+        clear_system_cache(True)
         old_partitions = partitions
 
         print()
@@ -408,12 +414,7 @@ while True:
     if not old_partitions:
         old_partitions = partitions
 
-    # clear_system_cache()
-
-    if check_cache_filled():
+    if check_need_clear_cache():
         clear_system_cache(True)
 
-    # sync_disks()
-
     time.sleep(1)
-
