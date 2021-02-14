@@ -267,6 +267,17 @@ def generate_soft_reset():
         f.write(contents)
 
 
+def generate_quit():
+    contents = '[commands]\n'
+    contents += 'cmd0=uae_quit\n'
+
+    print(FS_UAE_TMP_INI + ' contents:')
+    print(contents)
+
+    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
+        f.write(contents)
+
+
 def send_SIGUSR1_signal():
     print('Sending SIGUSR1 signal to Amiberry emulator')
 
@@ -402,14 +413,29 @@ def on_key_press(key):
         key_alt_pressed = False
         key_delete_pressed = False
 
-        generate_soft_reset()
+        generate_quit()
         send_SIGUSR1_signal()
         clear_system_cache()
 
 
+def on_key_release(key):
+    global key_ctrl_pressed
+    global key_alt_pressed
+    global key_delete_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = False
+
+    if key == Key.alt:
+        key_alt_pressed = False
+
+    if key == Key.delete:
+        key_delete_pressed = False
+
+
 check_pre_requirements()
 
-keyboard_listener = Listener(on_press=on_key_press)
+keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
 
 clear_system_cache(True)
