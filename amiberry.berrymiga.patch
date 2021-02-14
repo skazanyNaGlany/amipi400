@@ -55,13 +55,14 @@ index 00000000..ed1296d8
 +#endif  // BERRYMIGA_CONSTS_H_
 diff --git a/src/berrymiga/externals.h b/src/berrymiga/externals.h
 new file mode 100644
-index 00000000..7de9a093
+index 00000000..9397f13a
 --- /dev/null
 +++ b/src/berrymiga/externals.h
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,9 @@
 +#ifndef BERRYMIGA_EXTERNALS_H_
 +#define BERRYMIGA_EXTERNALS_H_
 +
++void uae_quit(void);
 +void uae_reset(int hardreset, int keyboardreset);
 +void ext_disk_eject(int num);
 +void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
@@ -110,10 +111,10 @@ index 00000000..e5b85bc6
 +#endif  // BERRYMIGA_HANDLER_H_
 diff --git a/src/berrymiga/ini-exec.cpp b/src/berrymiga/ini-exec.cpp
 new file mode 100644
-index 00000000..4a0d3632
+index 00000000..9dc36af0
 --- /dev/null
 +++ b/src/berrymiga/ini-exec.cpp
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,216 @@
 +#include <stdio.h>
 +#include <string.h>
 +#include <stdlib.h>
@@ -282,6 +283,11 @@ index 00000000..4a0d3632
 +            atoi(arg1)
 +        );
 +    }
++    else if (_str_starts_with(command, "uae_quit")) {
++        printf("[%s] processed command arguments: %s\n", APP_NAME, command);
++
++        uae_quit();
++    }
 +
 +    return 1;
 +}
@@ -363,7 +369,7 @@ index 2e8c716e..6e481f85 100644
  {
  	drive *drv = floppy + num;
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index 5dc6deee..d7ba5a2e 100644
+index 5dc6deee..3625bf58 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
 @@ -48,6 +48,8 @@
@@ -375,7 +381,32 @@ index 5dc6deee..d7ba5a2e 100644
  extern FILE* debugfile;
  
  int pause_emulation;
-@@ -1424,6 +1426,8 @@ int main(int argc, char* argv[])
+@@ -84,12 +86,18 @@ std::string get_version_string()
+ 
+ void set_key_configs(struct uae_prefs* p)
+ {
+-	if (strncmp(p->open_gui, "", 1) != 0)
+-		// If we have a value in the config, we use that instead
+-		enter_gui_key = SDL_GetKeyFromName(p->open_gui);
+-	else
+-		// Otherwise we go for the default found in amiberry.conf
+-		enter_gui_key = SDL_GetKeyFromName(amiberry_options.default_open_gui_key);
++	if (strncmp(p->open_gui, "none", 4) != 0) {
++		if (strncmp(p->open_gui, "", 1) != 0)
++			// If we have a value in the config, we use that instead
++			enter_gui_key = SDL_GetKeyFromName(p->open_gui);
++		else
++			// Otherwise we go for the default found in amiberry.conf
++			enter_gui_key = SDL_GetKeyFromName(amiberry_options.default_open_gui_key);
++	}
++	else {
++		// open_gui is "none", so it will be disabled
++		enter_gui_key = -1;
++	}
+ 	// if nothing was found in amiberry.conf either, we default back to F12
+ 	if (enter_gui_key == 0)
+ 		enter_gui_key = SDLK_F12;
+@@ -1424,6 +1432,8 @@ int main(int argc, char* argv[])
  		abort();
  	}
  
