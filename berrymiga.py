@@ -1,18 +1,27 @@
-import pyudev
-import psutil
-import sh
-import time
-import os
-import tempfile
 import sys
-import fnmatch
-import re
 
-from pprint import pprint
-from collections import OrderedDict
-from typing import Optional
-from io import StringIO
-from pynput.keyboard import Key, Listener
+assert sys.platform == 'linux', "This script must be run only on Linux"
+assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, "This script requires Python 3.5+"
+
+try:
+    import pyudev
+    import psutil
+    import sh
+    import time
+    import os
+    import tempfile
+    import sys
+    import fnmatch
+    import re
+
+    from pprint import pprint
+    from collections import OrderedDict
+    from typing import Optional
+    from io import StringIO
+    from pynput.keyboard import Key, Listener
+except ImportError as xie:
+    print(xie)
+    sys.exit(1)
 
 
 APP_UNIXNAME = 'berrymiga'
@@ -33,6 +42,25 @@ key_delete_pressed = False
 
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
+
+
+def check_pre_requirements():
+    bins = [
+        'sync',
+        'echo',
+        'fsck',
+        'mount',
+        'umount',
+        'chmod',
+        'killall',
+        'lsblk',
+        'fincore'
+    ]
+
+    for ibin in bins:
+        if not sh.which(ibin):
+            print(ibin + ': command not found')
+            sys.exit(1)
 
 
 def get_relative_path(pathname: str) -> str:
@@ -379,6 +407,8 @@ def on_key_press(key):
         clear_system_cache()
 
 
+check_pre_requirements()
+
 keyboard_listener = Listener(on_press=on_key_press)
 keyboard_listener.start()
 
@@ -414,7 +444,9 @@ while True:
     if not old_partitions:
         old_partitions = partitions
 
-    if check_need_clear_cache():
-        clear_system_cache(True)
+    # if check_need_clear_cache():
+    #     clear_system_cache(True)
+
+    os.system('sync')
 
     time.sleep(1)
