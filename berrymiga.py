@@ -13,6 +13,8 @@ try:
     import sys
     import fnmatch
     import re
+    import psutil
+    import subprocess
 
     from pprint import pprint
     from collections import OrderedDict
@@ -26,9 +28,13 @@ except ImportError as xie:
 
 APP_UNIXNAME = 'berrymiga'
 OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
-FS_UAE_PATHNAME = '/home/pi/projects.local/amiberry/amiberry'
-FS_UAE_TMP_INI = os.path.join(os.path.dirname(FS_UAE_PATHNAME), 'amiberry.tmp.ini')
+EMULATOR_EXE_PATHNAME = 'amiberry'
+EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 COUNT_FLOPPIES = 1
+EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom {floppies} {cdimage}'
+# EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
+# EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
+AUTORUN_EMULATOR = True
 
 floppies = [None for x in range(COUNT_FLOPPIES)]
 context = pyudev.Context()
@@ -40,11 +46,27 @@ key_ctrl_pressed = False
 key_alt_pressed = False
 key_delete_pressed = False
 
-
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
 
 def check_pre_requirements():
+    check_emulator()
+    check_system_binaries()
+
+
+def check_emulator():
+    global EMULATOR_EXE_PATHNAME
+
+    emu_real_pathname = os.path.realpath(EMULATOR_EXE_PATHNAME)
+
+    if not os.path.exists(emu_real_pathname):
+        print('Emulator executable ' + EMULATOR_EXE_PATHNAME + ' does not exists')
+        sys.exit(1)
+
+    EMULATOR_EXE_PATHNAME = emu_real_pathname
+
+
+def check_system_binaries():
     bins = [
         'sync',
         'echo',
@@ -61,6 +83,39 @@ def check_pre_requirements():
         if not sh.which(ibin):
             print(ibin + ': command not found')
             sys.exit(1)
+
+
+def is_emulator_running():
+    for iprocess in psutil.process_iter(attrs=['exe']):
+        if iprocess.info['exe'] == EMULATOR_EXE_PATHNAME:
+            return True
+
+    return False
+
+
+def run_emulator():
+    global floppies
+
+    print('Running emulator')
+
+    # assign floppies via command line
+    str_floppies = ''
+
+    for index, ifloppy in enumerate(floppies):
+        if ifloppy:
+            str_floppies += r' -{index} "{pathname}"'.format(index=index, pathname=ifloppy['pathname'])
+
+    pattern = EMULATOR_RUN_PATTERN.format(
+        executable=EMULATOR_EXE_PATHNAME,
+        floppies=str_floppies.strip(),
+        cdimage=''
+    )
+
+    print('Emulator command line: ' + pattern)
+
+    subprocess.Popen(pattern, cwd=os.path.dirname(EMULATOR_EXE_PATHNAME), shell=True)
+
+    time.sleep(3)
 
 
 def get_relative_path(pathname: str) -> str:
@@ -124,7 +179,8 @@ def print_partitions(partitions: dict):
 def force_umount(pathname: str):
     try:
         sh.umount('-l', pathname)
-    except sh.ErrorReturnCode_1:
+    except (sh.ErrorReturnCode_1, sh.ErrorReturnCode_32) as x:
+        print(str(x))
         print('Failed to force-umount ' + pathname + ', maybe it is umounted already')
 
 
@@ -249,10 +305,10 @@ def generate_mount_table():
             contents += 'cmd' + str(cmd_no) + '=ext_disk_insert_force ' + str(index) + ',' + ifloppy['pathname'] + ',0\n'
             cmd_no += 1
 
-    print(FS_UAE_TMP_INI + ' contents:')
+    print(EMULATOR_TMP_INI_PATHNAME + ' contents:')
     print(contents)
 
-    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
+    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
         f.write(contents)
 
 
@@ -260,10 +316,10 @@ def generate_soft_reset():
     contents = '[commands]\n'
     contents += 'cmd0=uae_reset 0,0\n'
 
-    print(FS_UAE_TMP_INI + ' contents:')
+    print(EMULATOR_TMP_INI_PATHNAME + ' contents:')
     print(contents)
 
-    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
+    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
         f.write(contents)
 
 
@@ -271,10 +327,10 @@ def generate_quit():
     contents = '[commands]\n'
     contents += 'cmd0=uae_quit\n'
 
-    print(FS_UAE_TMP_INI + ' contents:')
+    print(EMULATOR_TMP_INI_PATHNAME + ' contents:')
     print(contents)
 
-    with open(FS_UAE_TMP_INI, 'w+', newline=None) as f:
+    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
         f.write(contents)
 
 
@@ -455,20 +511,12 @@ while True:
         clear_system_cache(True)
         old_partitions = partitions
 
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-        print()
-
     if not old_partitions:
         old_partitions = partitions
+
+    if AUTORUN_EMULATOR:
+        if not is_emulator_running():
+            run_emulator()
 
     # if check_need_clear_cache():
     #     clear_system_cache(True)
