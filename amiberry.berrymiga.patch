@@ -349,6 +349,35 @@ index 00000000..78f03adf
 +int _str_starts_with(const char *str, const char *pre);
 +
 +#endif  // BERRYMIGA_INI_EXEC_H_
+diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp
+index 58b02fc4..30da1a8b 100644
+--- a/src/cfgfile.cpp
++++ b/src/cfgfile.cpp
+@@ -3522,12 +3522,18 @@ static int cfgfile_parse_host(struct uae_prefs* p, TCHAR* option, TCHAR* value)
+ 		|| cfgfile_strval(option, value, _T("absolute_mouse"), &p->input_tablet, abspointers, 0))
+ 		return 1;
+ 
+-	if (cfgfile_yesno(option, value, _T("magic_mouse"), &vb)) {
+-		if (vb)
+-			p->input_mouse_untrap |= MOUSEUNTRAP_MAGIC;
+-		else
+-			p->input_mouse_untrap &= ~MOUSEUNTRAP_MAGIC;
+-		return 1;
++	if (!_tcsicmp(option, _T("magic_mouse")) && !_tcsicmp(value, _T("none"))) {
++		// disable mouse ungrab on middle click
++		p->input_mouse_untrap = MOUSEUNTRAP_NONE;
++	}
++	else {
++		if (cfgfile_yesno(option, value, _T("magic_mouse"), &vb)) {
++			if (vb)
++				p->input_mouse_untrap |= MOUSEUNTRAP_MAGIC;
++			else
++				p->input_mouse_untrap &= ~MOUSEUNTRAP_MAGIC;
++			return 1;
++		}
+ 	}
+ 
+ #ifdef GFXFILTER
 diff --git a/src/disk.cpp b/src/disk.cpp
 index 2e8c716e..6e481f85 100644
 --- a/src/disk.cpp
@@ -369,7 +398,7 @@ index 2e8c716e..6e481f85 100644
  {
  	drive *drv = floppy + num;
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index 5dc6deee..3625bf58 100644
+index 5dc6deee..8079402f 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
 @@ -48,6 +48,8 @@
@@ -400,7 +429,7 @@ index 5dc6deee..3625bf58 100644
 +			enter_gui_key = SDL_GetKeyFromName(amiberry_options.default_open_gui_key);
 +	}
 +	else {
-+		// open_gui is "none", so it will be disabled
++		// open_gui is "none", so "enter_gui_key" will be disabled
 +		enter_gui_key = -1;
 +	}
  	// if nothing was found in amiberry.conf either, we default back to F12
