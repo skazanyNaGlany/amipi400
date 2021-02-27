@@ -44,15 +44,9 @@ commands = []
 
 partitions = None
 old_partitions = None
-
-# context = pyudev.Context()
-# old_partitions = None
-# first_run = True
-# partitions = None
-# old_partitions = None
-# key_ctrl_pressed = False
-# key_alt_pressed = False
-# key_delete_pressed = False
+key_ctrl_pressed = False
+key_alt_pressed = False
+key_delete_pressed = False
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
@@ -164,11 +158,36 @@ def print_commands():
     if not commands:
         return
 
+    print('Commands:')
+
     for index, icmd in enumerate(commands):
         print('cmd{index}={cmd}'.format(
             index=index,
             cmd=icmd
         ))
+
+
+def execute_commands():
+    global commands
+
+    if not commands:
+        return
+
+    contents = '[commands]\n'
+
+    for index, icmd in enumerate(commands):
+        contents += 'cmd{index}={cmd}\n'.format(
+            index=index,
+            cmd=icmd
+        )
+
+    commands = []
+
+    print(EMULATOR_TMP_INI_PATHNAME + ' contents:')
+    print(contents)
+
+    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
+        f.write(contents)
 
 
 def mount_partitions(partitions: dict) -> list:
@@ -386,14 +405,54 @@ def put_command(command: str, reset: bool = False):
     commands.append(command)
 
 
+def on_key_press(key):
+    global key_ctrl_pressed
+    global key_alt_pressed
+    global key_delete_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = True
+
+    if key == Key.alt:
+        key_alt_pressed = True
+
+    if key == Key.delete:
+        key_delete_pressed = True
+
+    if key_ctrl_pressed and key_alt_pressed and key_delete_pressed:
+        key_ctrl_pressed = False
+        key_alt_pressed = False
+        key_delete_pressed = False
+
+        put_command('uae_reset 0,0')
+
+
+def on_key_release(key):
+    global key_ctrl_pressed
+    global key_alt_pressed
+    global key_delete_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = False
+
+    if key == Key.alt:
+        key_alt_pressed = False
+
+    if key == Key.delete:
+        key_delete_pressed = False
+
+
 check_pre_requirements()
+
+keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
+keyboard_listener.start()
 
 while True:
     unmounted = []
     new_mounted = []
     new_attached = []
     new_detached = []
-    commands = []
+    # commands = []
 
     partitions = get_partitions2()
 
@@ -413,10 +472,10 @@ while True:
         new_attached = process_new_mounted(partitions, new_mounted)
 
     if unmounted or new_mounted or new_attached or new_detached:
-        print('unmounted', unmounted)
-        print('new_mounted', new_mounted)
-        print('new_attached', new_attached)
-        print('new_detached', new_detached)
+        # print('unmounted', unmounted)
+        # print('new_mounted', new_mounted)
+        # print('new_attached', new_attached)
+        # print('new_detached', new_detached)
 
         # something changed
         print_partitions(partitions)
@@ -425,6 +484,11 @@ while True:
         clear_system_cache()
 
     old_partitions = partitions
+
+    print_commands()
+
+    if commands:
+        execute_commands()
 
     os.system('sync')
     time.sleep(1)
@@ -1144,7 +1208,6 @@ while True:
 #         key_delete_pressed = False
 
 
-# check_pre_requirements()
 
 # keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 # keyboard_listener.start()
