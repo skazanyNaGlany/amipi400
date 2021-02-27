@@ -622,12 +622,14 @@ def on_key_press(key):
         ctrl_alt_del_press_ts = int(time.time())
 
         put_command('uae_reset 0,0')
+        clear_system_cache()
 
 
 def on_key_release(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_delete_pressed
+    global ctrl_alt_del_press_ts
 
     if key == Key.ctrl:
         key_ctrl_pressed = False
@@ -638,11 +640,16 @@ def on_key_release(key):
     if key == Key.delete:
         key_delete_pressed = False
 
+    if not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
+        ctrl_alt_del_press_ts = 0
+
 
 check_pre_requirements()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
+
+clear_system_cache(True)
 
 while True:
     unmounted = []
@@ -689,20 +696,17 @@ while True:
         execute_commands()
         clear_system_cache()
 
+    if AUTORUN_EMULATOR:
+        if not is_emulator_running():
+            run_emulator()
+
     if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
         ctrl_alt_del_press_ts = 0
 
         kill_emulator()
 
-    if AUTORUN_EMULATOR:
-        if not is_emulator_running():
-            run_emulator()
-
     os.system('sync')
     time.sleep(1)
-
-
-
 
 
 
