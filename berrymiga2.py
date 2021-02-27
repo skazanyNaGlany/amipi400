@@ -154,6 +154,19 @@ def print_attached_floppies():
         ))
 
 
+def print_attached_hard_disks():
+    print('Attached hard disks:')
+
+    for ihd_no, ihd_data in enumerate(drives):
+        if not ihd_data:
+            continue
+
+        print('DH{index}: {pathname}'.format(
+            index=ihd_no,
+            pathname=ihd_data['pathname']
+        ))
+
+
 def print_commands():
     if not commands:
         return
@@ -165,6 +178,15 @@ def print_commands():
             index=index,
             cmd=icmd
         ))
+
+
+def send_SIGUSR1_signal():
+    print('Sending SIGUSR1 signal to Amiberry emulator')
+
+    try:
+        sh.killall('-USR1', 'amiberry')
+    except sh.ErrorReturnCode_1:
+        print('No process found')
 
 
 def execute_commands():
@@ -188,6 +210,8 @@ def execute_commands():
 
     with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
         f.write(contents)
+
+    send_SIGUSR1_signal()
 
 
 def mount_partitions(partitions: dict) -> list:
@@ -267,6 +291,10 @@ def get_label_floppy_index(label: str):
     return int(label[5])
 
 
+def get_label_hard_disk_index(label: str):
+    return int(label[5])
+
+
 def force_umount(pathname: str):
     try:
         sh.umount('-l', pathname)
@@ -304,12 +332,95 @@ def process_new_mounted(partitions: dict, new_mounted: list):
             if attach_mountpoint_floppy(idevice, ipart_data):
                 attached.append(idevice)
         elif is_hard_drive_label(ipart_data['label']):
-            pass
+            if attach_mountpoint_hard_disk(idevice, ipart_data):
+                attached.append(idevice)
 
     return attached
 
 
+def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
+    global drives
+
+    mountpoint = ipart_data['mountpoint']
+
+    force_all_rw(mountpoint)
+
+    hd_no = get_label_hard_disk_index(ipart_data['label'])
+
+    if not drives[hd_no] or drives[hd_no]['pathname'] != mountpoint:
+        print('Attaching "{mountpoint}" to DH{index}'.format(
+            mountpoint=mountpoint,
+            index=hd_no
+        ))
+
+        drives[hd_no] = {
+            'pathname': mountpoint,
+            'mountpoint': ipart_data['mountpoint'],
+            'label': ipart_data['label'],
+            'device': ipart_dev
+        }
+
+        put_command('ext_hd_disk_dir_attach DH{index},{mountpoint},1'.format(
+            index=hd_no,
+            mountpoint=mountpoint
+        ))
+
+        return True
+    else:
+        print('DH{index} already attached'.format(
+            index=hd_no
+        ))
+
+    return False
+
+
+# def attach_mounted_hard_drive(ipartition: str, ipartition_data, force: Optional[bool] = False):
+#     new_mounted = False
+
+#     if not old_partitions:
+#         new_mounted = True
+
+#     if not new_mounted:
+#         if ipartition not in old_partitions:
+#             new_mounted = True
+
+#         if not new_mounted:
+#             for key2, value2 in old_partitions.items():
+#                 if key2 == ipartition and (not value2['mountpoint'] or not value2['label']):
+#                     new_mounted = True
+#                     break
+
+#     if force:
+#         new_mounted = True
+
+#     if new_mounted:
+#         print('New mounted ' + ipartition)
+
+#         try:
+#             sh.chmod('-R', 'a+rw', ipartition_data['mountpoint'])
+#         except sh.ErrorReturnCode_1 as x1:
+#             print(str(x1))
+
+#         hd_no = int(ipartition_data['label'][5])
+
+#         if not drives[hd_no] or drives[hd_no]['pathname'] != ipartition:
+#             print('Assigning "' + ipartition + '" to DH' + str(hd_no))
+
+#             drives[hd_no] = {
+#                 'pathname': ipartition_data['mountpoint'],
+#                 'mountpoint': ipartition_data['mountpoint'],
+#                 'label': ipartition_data['label']
+#             }
+
+#         return True
+
+#     return False
+
+
 def process_unmounted(unmounted: list):
+    global floppies
+    global drives
+
     detached = []
 
     for idevice in unmounted:
@@ -328,6 +439,25 @@ def process_unmounted(unmounted: list):
                 put_command('ext_disk_eject {index}'.format(
                     index=idf_index
                 ))
+
+                detached.append(idevice)
+
+        for idh_no, ihd_data in enumerate(drives):
+            if not ihd_data:
+                continue
+
+            if ihd_data['device'] == idevice:
+                print('Detaching "{pathname}" from DH{index}'.format(
+                    pathname=ihd_data['pathname'],
+                    index=idh_no
+                ))
+
+                drives[idh_no] = None
+
+                put_command('ext_hd_disk_dir_detach {index}'.format(
+                    index=idh_no
+                ))
+                put_command('uae_reset 0,0')
 
                 detached.append(idevice)
 
@@ -394,6 +524,8 @@ def put_command(command: str, reset: bool = False):
     # ext_disk_insert_force <df_no>,<pathname>,<1/0 write protected>
     # uae_reset <1/0>,<1/0>
     # uae_quit
+    # ext_hd_disk_dir_detach <hd_no>
+    # ext_hd_disk_dir_attach <device_name>,<pathname>,<1/0 bootable>
     """
     global commands
 
@@ -403,6 +535,58 @@ def put_command(command: str, reset: bool = False):
             return
 
     commands.append(command)
+
+
+def is_emulator_running():
+    for iprocess in psutil.process_iter(attrs=['exe']):
+        if iprocess.info['exe'] == EMULATOR_EXE_PATHNAME:
+            return True
+
+    return False
+
+
+def run_emulator():
+    global floppies
+
+    print('Running emulator')
+
+    # assign floppies via command line
+    str_floppies = ''
+    str_drives = ''
+
+    for index, ifloppy in enumerate(floppies):
+        if ifloppy:
+            str_floppies += r' -{index} "{pathname}"'.format(index=index, pathname=ifloppy['pathname'])
+
+    drive_index = 0
+    for index, idrive in enumerate(drives):
+        if idrive:
+            str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                drive_index=drive_index,
+                label=idrive['label'].replace('BM_', ''),
+                pathname=idrive['pathname']
+            )
+            str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                drive_index=drive_index,
+                label=idrive['label'].replace('BM_', ''),
+                pathname=idrive['pathname']
+            )
+
+            # -s uaehf0=dir,rw,DH0:DH0:/home/pi/projects.local/,0 -s uaehf1=dir,rw,DH1:BM_DH0:/media/pi/BM_DH0/,0 -s filesystem2=rw,DH0:DH0:/home/pi/projects.local/,0 -s filesystem2=rw,DH1:DH1:/media/pi/BM_DH0/,0
+            drive_index += 1
+
+    pattern = EMULATOR_RUN_PATTERN.format(
+        executable=EMULATOR_EXE_PATHNAME,
+        floppies=str_floppies.strip(),
+        drives=str_drives.strip(),
+        cdimage=''
+    )
+
+    print('Emulator command line: ' + pattern)
+
+    subprocess.Popen(pattern, cwd=os.path.dirname(EMULATOR_EXE_PATHNAME), shell=True)
+
+    time.sleep(0)
 
 
 def on_key_press(key):
@@ -480,6 +664,7 @@ while True:
         # something changed
         print_partitions(partitions)
         print_attached_floppies()
+        print_attached_hard_disks()
 
         clear_system_cache()
 
@@ -489,6 +674,11 @@ while True:
 
     if commands:
         execute_commands()
+        clear_system_cache()
+
+    if AUTORUN_EMULATOR:
+        if not is_emulator_running():
+            run_emulator()
 
     os.system('sync')
     time.sleep(1)
