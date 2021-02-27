@@ -32,7 +32,7 @@ EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
 MAX_DRIVES = 10
-EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom {floppies} {drives} {cdimage}'
+EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {drives} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
@@ -47,6 +47,7 @@ old_partitions = None
 key_ctrl_pressed = False
 key_alt_pressed = False
 key_delete_pressed = False
+ctrl_alt_del_press_ts = 0
 
 os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
 
@@ -589,10 +590,20 @@ def run_emulator():
     time.sleep(0)
 
 
+def kill_emulator():
+    print('Sending SIGKILL signal to Amiberry emulator')
+
+    try:
+        sh.killall('-9', 'amiberry')
+    except sh.ErrorReturnCode_1:
+        print('No process found')
+
+
 def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_delete_pressed
+    global ctrl_alt_del_press_ts
 
     if key == Key.ctrl:
         key_ctrl_pressed = True
@@ -607,6 +618,8 @@ def on_key_press(key):
         key_ctrl_pressed = False
         key_alt_pressed = False
         key_delete_pressed = False
+
+        ctrl_alt_del_press_ts = int(time.time())
 
         put_command('uae_reset 0,0')
 
@@ -675,6 +688,11 @@ while True:
     if commands:
         execute_commands()
         clear_system_cache()
+
+    if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
+        ctrl_alt_del_press_ts = 0
+
+        kill_emulator()
 
     if AUTORUN_EMULATOR:
         if not is_emulator_running():
