@@ -339,6 +339,57 @@ def process_new_mounted(partitions: dict, new_mounted: list):
     return attached
 
 
+def has_attached_df0():
+    return floppies[0] is not None
+
+
+def has_attached_dh0():
+    return drives[0] is not None
+
+
+def process_other_mounted_floppy(partitions: dict):
+    attached = []
+
+    if has_attached_df0():
+        return attached
+
+    for ipart_dev, ipart_data in partitions.items():
+        if not ipart_data['mountpoint']:
+            continue
+
+        if is_floppy_label(ipart_data['label']):
+            if attach_mountpoint_floppy(ipart_dev, ipart_data):
+                attached.append(ipart_dev)
+
+    return attached
+
+
+def process_other_mounted_hard_disk(partitions: dict):
+    attached = []
+
+    if has_attached_dh0():
+        return []
+
+    for ipart_dev, ipart_data in partitions.items():
+        if not ipart_data['mountpoint']:
+            continue
+
+        if is_hard_drive_label(ipart_data['label']):
+            if attach_mountpoint_hard_disk(ipart_dev, ipart_data):
+                attached.append(ipart_dev)
+
+    return attached
+
+
+def process_other_mounted(partitions: dict):
+    attached = []
+
+    attached += process_other_mounted_floppy(partitions)
+    attached += process_other_mounted_hard_disk(partitions)
+
+    return attached
+
+
 def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     global drives
 
@@ -656,6 +707,7 @@ while True:
     new_mounted = []
     new_attached = []
     new_detached = []
+    other_attached = []
     # commands = []
 
     partitions = get_partitions2()
@@ -675,7 +727,9 @@ while True:
 
         new_attached = process_new_mounted(partitions, new_mounted)
 
-    if unmounted or new_mounted or new_attached or new_detached:
+    other_attached = process_other_mounted(partitions)
+
+    if unmounted or new_mounted or new_attached or new_detached or other_attached:
         # print('unmounted', unmounted)
         # print('new_mounted', new_mounted)
         # print('new_attached', new_attached)
