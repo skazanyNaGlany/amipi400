@@ -225,7 +225,9 @@ def mount_partitions(partitions: dict) -> list:
         if value['mountpoint']:
             continue
 
-        if not is_floppy_label(value['label']) and not is_hard_drive_label(value['label']):
+        if not is_floppy_label(value['label']) and \
+            not is_hard_drive_label(value['label']) and \
+            not is_hard_file_label(value['label']):
             continue
 
         print('Mounting ' + key + ' as ' + value['internal_mountpoint'])
@@ -291,12 +293,29 @@ def is_hard_drive_label(label: str) -> bool:
     return True
 
 
+def is_hard_file_label(label: str) -> bool:
+    if len(label) != 7:
+        return False
+
+    if not label.startswith('BM_HDF'):
+        return False
+
+    if not label[6].isdigit():
+        return False
+
+    return True
+
+
 def get_label_floppy_index(label: str):
     return int(label[5])
 
 
 def get_label_hard_disk_index(label: str):
     return int(label[5])
+
+
+def get_label_hard_file_index(label: str):
+    return int(label[6])
 
 
 def force_umount(pathname: str):
@@ -338,6 +357,9 @@ def process_new_mounted(partitions: dict, new_mounted: list):
         elif is_hard_drive_label(ipart_data['label']):
             if attach_mountpoint_hard_disk(idevice, ipart_data):
                 attached.append(idevice)
+        elif is_hard_file_label(ipart_data['label']):
+            if attach_mountpoint_hard_file(idevice, ipart_data):
+                attached.append(idevice)
 
     return attached
 
@@ -353,15 +375,12 @@ def has_attached_dh0():
 def process_other_mounted_floppy(partitions: dict):
     attached = []
 
-    if has_attached_df0():
-        return attached
-
     for ipart_dev, ipart_data in partitions.items():
         if not ipart_data['mountpoint']:
             continue
 
         if is_floppy_label(ipart_data['label']):
-            if attach_mountpoint_floppy(ipart_dev, ipart_data):
+            if attach_mountpoint_floppy(ipart_dev, ipart_data, True):
                 attached.append(ipart_dev)
 
     return attached
@@ -370,15 +389,26 @@ def process_other_mounted_floppy(partitions: dict):
 def process_other_mounted_hard_disk(partitions: dict):
     attached = []
 
-    if has_attached_dh0():
-        return []
-
     for ipart_dev, ipart_data in partitions.items():
         if not ipart_data['mountpoint']:
             continue
 
         if is_hard_drive_label(ipart_data['label']):
-            if attach_mountpoint_hard_disk(ipart_dev, ipart_data):
+            if attach_mountpoint_hard_disk(ipart_dev, ipart_data, True):
+                attached.append(ipart_dev)
+
+    return attached
+
+
+def process_other_mounted_hard_file(partitions: dict):
+    attached = []
+
+    for ipart_dev, ipart_data in partitions.items():
+        if not ipart_data['mountpoint']:
+            continue
+
+        if is_hard_file_label(ipart_data['label']):
+            if attach_mountpoint_hard_file(ipart_dev, ipart_data, True):
                 attached.append(ipart_dev)
 
     return attached
@@ -389,11 +419,12 @@ def process_other_mounted(partitions: dict):
 
     attached += process_other_mounted_floppy(partitions)
     attached += process_other_mounted_hard_disk(partitions)
+    attached += process_other_mounted_hard_file(partitions)
 
     return attached
 
 
-def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
+def attach_mountpoint_hard_disk(ipart_dev, ipart_data, quiet_already_attach = False):
     global drives
 
     mountpoint = ipart_data['mountpoint']
@@ -412,7 +443,9 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
             'pathname': mountpoint,
             'mountpoint': ipart_data['mountpoint'],
             'label': ipart_data['label'],
-            'device': ipart_dev
+            'device': ipart_dev,
+            'is_dir': True,
+            'is_hdf': False
         }
 
         put_command('ext_hd_disk_dir_attach DH{index},{mountpoint},1'.format(
@@ -422,9 +455,55 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
 
         return True
     else:
-        print('DH{index} already attached'.format(
+        if not quiet_already_attach:
+            print('DH{index} already attached'.format(
+                index=hd_no
+            ))
+
+    return False
+
+
+def attach_mountpoint_hard_file(ipart_dev, ipart_data, quiet_already_attach = False):
+    global drives
+
+    mountpoint = ipart_data['mountpoint']
+
+    force_all_rw(mountpoint)
+
+    hdfs = mountpoint_find_files(mountpoint, '*.hdf')
+
+    if not hdfs:
+        return False
+
+    first_hdf = hdfs[0]
+    hd_no = get_label_hard_file_index(ipart_data['label'])
+
+    if not drives[hd_no] or drives[hd_no]['pathname'] != first_hdf:
+        print('Attaching "{pathname}" to DH{index} (HDF)'.format(
+            pathname=first_hdf,
             index=hd_no
         ))
+
+        drives[hd_no] = {
+            'pathname': first_hdf,
+            'mountpoint': ipart_data['mountpoint'],
+            'label': ipart_data['label'],
+            'device': ipart_dev,
+            'is_dir': False,
+            'is_hdf': True
+        }
+
+        put_command('ext_hd_disk_file_attach DH{index},{pathname},1'.format(
+            index=hd_no,
+            pathname=first_hdf
+        ))
+
+        return True
+    else:
+        if not quiet_already_attach:
+            print('DH{index} (HDF) already attached'.format(
+                index=hd_no
+            ))
 
     return False
 
@@ -464,57 +543,74 @@ def process_unmounted(unmounted: list):
                     index=idh_no
                 ))
 
+                is_dir = ihd_data['is_dir']
+
                 drives[idh_no] = None
 
-                put_command('ext_hd_disk_dir_detach {index}'.format(
-                    index=idh_no
-                ))
-                put_command('uae_reset 0,0')
+                if is_dir:
+                    put_command('ext_hd_disk_dir_detach {index}'.format(
+                        index=idh_no
+                    ))
+                    put_command('uae_reset 0,0')
+                else:
+                    put_command('ext_hd_disk_file_detach {index}'.format(
+                        index=idh_no
+                    ))
+                    put_command('uae_reset 0,0')
 
                 detached.append(idevice)
 
     return detached
 
 
-def attach_mountpoint_floppy(ipart_dev, ipart_data):
-    adfs = []
-    mountpoint = ipart_data['mountpoint']
+def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
+    files = []
 
-    for file in os.listdir(mountpoint):
-        file_lower = file.lower()
+    for ifile in os.listdir(mountpoint):
+        file_lower = ifile.lower()
 
-        if not fnmatch.fnmatch(file_lower, '*.adf'):
+        if not fnmatch.fnmatch(file_lower, pattern):
             continue
 
-        adfs.append(os.path.join(mountpoint, file))
+        files.append(os.path.join(mountpoint, ifile))
 
-    adfs = sorted(adfs)
+    return sorted(files)
 
-    if adfs:
-        index = get_label_floppy_index(ipart_data['label'])
 
-        if not floppies[index] or floppies[index]['pathname'] != adfs[0]:
-            print('Attaching "{pathname}" to DF{index}'.format(
-                pathname=adfs[0],
-                index=index
-            ))
+def attach_mountpoint_floppy(ipart_dev, ipart_data, quiet_already_attach = False):
+    mountpoint = ipart_data['mountpoint']
 
-            floppies[index] = {
-                'pathname': adfs[0],
-                'mountpoint': mountpoint,
-                'device': ipart_dev,
-                'file_size': os.path.getsize(adfs[0]),
-                'last_access_ts': 0,
-                'last_cached_size': 0
-            }
+    adfs = mountpoint_find_files(mountpoint, '*.adf')
 
-            put_command('ext_disk_insert_force {df_no},{pathname},0'.format(
-                df_no=index,
-                pathname=adfs[0]
-            ))
+    if not adfs:
+        return False
 
-            return True
-        else:
+    first_adf = adfs[0]
+    index = get_label_floppy_index(ipart_data['label'])
+
+    if not floppies[index] or floppies[index]['pathname'] != first_adf:
+        print('Attaching "{pathname}" to DF{index}'.format(
+            pathname=first_adf,
+            index=index
+        ))
+
+        floppies[index] = {
+            'pathname': first_adf,
+            'mountpoint': mountpoint,
+            'device': ipart_dev,
+            'file_size': os.path.getsize(first_adf),
+            'last_access_ts': 0,
+            'last_cached_size': 0
+        }
+
+        put_command('ext_disk_insert_force {df_no},{pathname},0'.format(
+            df_no=index,
+            pathname=first_adf
+        ))
+
+        return True
+    else:
+        if not quiet_already_attach:
             print('Floppy already attached to DF{index}, eject it first'.format(
                 index=index
             ))
@@ -566,26 +662,38 @@ def run_emulator():
     # assign floppies via command line
     str_floppies = ''
     str_drives = ''
+    drive_index = 0
 
     for index, ifloppy in enumerate(floppies):
         if ifloppy:
             str_floppies += r' -{index} "{pathname}"'.format(index=index, pathname=ifloppy['pathname'])
 
-    drive_index = 0
     for index, idrive in enumerate(drives):
         if idrive:
-            str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},0 '.format(
-                drive_index=drive_index,
-                label=idrive['label'].replace('BM_', ''),
-                pathname=idrive['pathname']
-            )
-            str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},0 '.format(
-                drive_index=drive_index,
-                label=idrive['label'].replace('BM_', ''),
-                pathname=idrive['pathname']
-            )
+            if idrive['is_dir']:
+                str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                    drive_index=drive_index,
+                    label=idrive['label'].replace('BM_', ''),
+                    pathname=idrive['pathname']
+                )
+                str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                    drive_index=drive_index,
+                    label=idrive['label'].replace('BM_', ''),
+                    pathname=idrive['pathname']
+                )
 
-            drive_index += 1
+                drive_index += 1
+            elif idrive['is_hdf']:
+                str_drives += ' -s hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,0,,uae1,0 '.format(
+                    drive_index=drive_index,
+                    pathname=idrive['pathname']
+                )
+                str_drives += ' -s uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,0,,uae1,0 '.format(
+                    drive_index=drive_index,
+                    pathname=idrive['pathname']
+                )
+
+                drive_index += 1
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=EMULATOR_EXE_PATHNAME,
