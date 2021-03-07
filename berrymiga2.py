@@ -58,6 +58,12 @@ def check_pre_requirements():
     check_system_binaries()
 
 
+def configure_system():
+    os.system('swapoff -a')
+    os.system('sysctl vm.swappiness=0')
+    os.system('sysctl vm.vfs_cache_pressure=200')
+
+
 def check_emulator():
     global EMULATOR_EXE_PATHNAME
 
@@ -80,7 +86,9 @@ def check_system_binaries():
         'chmod',
         'killall',
         'lsblk',
-        'fincore'
+        'fincore',
+        'sysctl',
+        'swapoff'
     ]
 
     for ibin in bins:
@@ -783,6 +791,7 @@ def on_key_release(key):
 
 
 check_pre_requirements()
+configure_system()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
