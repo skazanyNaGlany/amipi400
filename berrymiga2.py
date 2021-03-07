@@ -372,6 +372,17 @@ def has_attached_dh0():
     return drives[0] is not None
 
 
+def is_mountpoint_attached(mountpoint: str) -> bool:
+    for imedium in floppies + drives:
+        if not imedium:
+            continue
+
+        if imedium['mountpoint'] == mountpoint:
+            return True
+
+    return False
+
+
 def process_other_mounted_floppy(partitions: dict):
     attached = []
 
@@ -379,8 +390,11 @@ def process_other_mounted_floppy(partitions: dict):
         if not ipart_data['mountpoint']:
             continue
 
+        if is_mountpoint_attached(ipart_data['mountpoint']):
+            continue
+
         if is_floppy_label(ipart_data['label']):
-            if attach_mountpoint_floppy(ipart_dev, ipart_data, True):
+            if attach_mountpoint_floppy(ipart_dev, ipart_data):
                 attached.append(ipart_dev)
 
     return attached
@@ -393,8 +407,11 @@ def process_other_mounted_hard_disk(partitions: dict):
         if not ipart_data['mountpoint']:
             continue
 
+        if is_mountpoint_attached(ipart_data['mountpoint']):
+            continue
+
         if is_hard_drive_label(ipart_data['label']):
-            if attach_mountpoint_hard_disk(ipart_dev, ipart_data, True):
+            if attach_mountpoint_hard_disk(ipart_dev, ipart_data):
                 attached.append(ipart_dev)
 
     return attached
@@ -407,8 +424,11 @@ def process_other_mounted_hard_file(partitions: dict):
         if not ipart_data['mountpoint']:
             continue
 
+        if is_mountpoint_attached(ipart_data['mountpoint']):
+            continue
+
         if is_hard_file_label(ipart_data['label']):
-            if attach_mountpoint_hard_file(ipart_dev, ipart_data, True):
+            if attach_mountpoint_hard_file(ipart_dev, ipart_data):
                 attached.append(ipart_dev)
 
     return attached
@@ -424,7 +444,7 @@ def process_other_mounted(partitions: dict):
     return attached
 
 
-def attach_mountpoint_hard_disk(ipart_dev, ipart_data, quiet_already_attach = False):
+def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     global drives
 
     mountpoint = ipart_data['mountpoint']
@@ -455,15 +475,14 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data, quiet_already_attach = Fa
 
         return True
     else:
-        if not quiet_already_attach:
-            print('DH{index} already attached'.format(
-                index=hd_no
-            ))
+        print('DH{index} already attached'.format(
+            index=hd_no
+        ))
 
     return False
 
 
-def attach_mountpoint_hard_file(ipart_dev, ipart_data, quiet_already_attach = False):
+def attach_mountpoint_hard_file(ipart_dev, ipart_data):
     global drives
 
     mountpoint = ipart_data['mountpoint']
@@ -500,10 +519,9 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data, quiet_already_attach = Fa
 
         return True
     else:
-        if not quiet_already_attach:
-            print('DH{index} (HDF) already attached'.format(
-                index=hd_no
-            ))
+        print('DH{index} (HDF) already attached'.format(
+            index=hd_no
+        ))
 
     return False
 
@@ -577,8 +595,10 @@ def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
     return sorted(files)
 
 
-def attach_mountpoint_floppy(ipart_dev, ipart_data, quiet_already_attach = False):
+def attach_mountpoint_floppy(ipart_dev, ipart_data):
     mountpoint = ipart_data['mountpoint']
+
+    force_all_rw(mountpoint)
 
     adfs = mountpoint_find_files(mountpoint, '*.adf')
 
@@ -610,10 +630,9 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, quiet_already_attach = False
 
         return True
     else:
-        if not quiet_already_attach:
-            print('Floppy already attached to DF{index}, eject it first'.format(
-                index=index
-            ))
+        print('Floppy already attached to DF{index}, eject it first'.format(
+            index=index
+        ))
 
     return False
 
