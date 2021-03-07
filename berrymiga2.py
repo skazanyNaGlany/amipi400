@@ -21,6 +21,7 @@ try:
     from typing import Optional
     from io import StringIO
     from pynput.keyboard import Key, Listener
+    from configparser import ConfigParser
 except ImportError as xie:
     print(xie)
     sys.exit(1)
@@ -31,11 +32,12 @@ OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
-MAX_DRIVES = 10
+MAX_DRIVES = 6
 EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {drives} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
+CONFIG_INI_NAME = '.berrymiga.ini'
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
 
@@ -110,7 +112,12 @@ def get_partitions2() -> OrderedDict:
         if not line:
             continue
 
-        found = re.search(pattern,line).groups()
+        search_result = re.search(pattern, line)
+
+        if not search_result:
+            continue
+
+        found = search_result.groups()
 
         full_path = os.path.join(os.path.sep, 'dev', found[0])
         device_data = {
@@ -119,7 +126,8 @@ def get_partitions2() -> OrderedDict:
                 OWN_MOUNT_POINT_PREFIX,
                 get_relative_path(full_path)
             ),
-            'label': found[4]
+            'label': found[4],
+            'config': get_mountpoint_config(found[3])
         }
 
         ret[full_path] = device_data
@@ -461,6 +469,9 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
 
     hd_no = get_label_hard_disk_index(ipart_data['label'])
 
+    if hd_no >= MAX_DRIVES:
+        return False
+
     if not drives[hd_no] or drives[hd_no]['pathname'] != mountpoint:
         print('Attaching "{mountpoint}" to DH{index}'.format(
             mountpoint=mountpoint,
@@ -472,6 +483,7 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
             'mountpoint': ipart_data['mountpoint'],
             'label': ipart_data['label'],
             'device': ipart_dev,
+            'config': ipart_data['config'],
             'is_dir': True,
             'is_hdf': False
         }
@@ -505,6 +517,9 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
     first_hdf = hdfs[0]
     hd_no = get_label_hard_file_index(ipart_data['label'])
 
+    if hd_no >= MAX_DRIVES:
+        return False
+
     if not drives[hd_no] or drives[hd_no]['pathname'] != first_hdf:
         print('Attaching "{pathname}" to DH{index} (HDF)'.format(
             pathname=first_hdf,
@@ -516,6 +531,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
             'mountpoint': ipart_data['mountpoint'],
             'label': ipart_data['label'],
             'device': ipart_dev,
+            'config': ipart_data['config'],
             'is_dir': False,
             'is_hdf': True
         }
@@ -616,6 +632,9 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
     first_adf = adfs[0]
     index = get_label_floppy_index(ipart_data['label'])
 
+    if index >= MAX_FLOPPIES:
+        return False
+
     if not floppies[index] or floppies[index]['pathname'] != first_adf:
         print('Attaching "{pathname}" to DF{index}'.format(
             pathname=first_adf,
@@ -628,7 +647,8 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
             'device': ipart_dev,
             'file_size': os.path.getsize(first_adf),
             'last_access_ts': 0,
-            'last_cached_size': 0
+            'last_cached_size': 0,
+            'config': ipart_data['config']
         }
 
         put_command('ext_disk_insert_force {df_no},{pathname},0'.format(
@@ -673,6 +693,31 @@ def put_command(command: str, reset: bool = False):
     commands.append(command)
 
 
+def get_mountpoint_config(mountpoint: str):
+    config_pathname = os.path.join(mountpoint, CONFIG_INI_NAME)
+
+    if not os.path.exists(config_pathname):
+        return None
+
+    config = ConfigParser()
+    config.read(config_pathname)
+
+    return config
+
+
+def get_medium_label(medium_data):
+    if not medium_data['config']:
+        return None
+
+    if 'partition' not in medium_data['config']:
+        return None
+
+    if 'label' not in medium_data['config']['partition']:
+        return None
+
+    return medium_data['config']['partition']['label']
+
+
 def is_emulator_running():
     for iprocess in psutil.process_iter(attrs=['exe']):
         if iprocess.info['exe'] == EMULATOR_EXE_PATHNAME:
@@ -698,14 +743,19 @@ def run_emulator():
     for index, idrive in enumerate(drives):
         if idrive:
             if idrive['is_dir']:
+                label = get_medium_label(idrive)
+
+                if not label:
+                    label = idrive['label'].replace('BM_', '')
+
                 str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},0 '.format(
                     drive_index=drive_index,
-                    label=idrive['label'].replace('BM_', ''),
+                    label=label,
                     pathname=idrive['pathname']
                 )
                 str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},0 '.format(
                     drive_index=drive_index,
-                    label=idrive['label'].replace('BM_', ''),
+                    label=label,
                     pathname=idrive['pathname']
                 )
 
