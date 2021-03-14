@@ -38,6 +38,7 @@ EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 CONFIG_INI_NAME = '.berrymiga.ini'
+DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
 
@@ -296,7 +297,7 @@ def is_floppy_label(label: str) -> bool:
     return True
 
 
-def is_hard_drive_label(label: str) -> bool:
+def is_hard_drive_simple_label(label: str) -> bool:
     if len(label) != 6:
         return False
 
@@ -309,7 +310,35 @@ def is_hard_drive_label(label: str) -> bool:
     return True
 
 
-def is_hard_file_label(label: str) -> bool:
+def is_hard_drive_extended_label(label: str) -> bool:
+    if len(label) != 8:
+        return False
+
+    if not label.startswith('BM_DH'):
+        return False
+
+    if not label[5].isdigit():
+        return False
+
+    if label[6] != '_':
+        return False
+
+    if not label[7].isdigit():
+        return False
+
+    return True
+
+
+def is_hard_drive_label(label: str) -> bool:
+    if is_hard_drive_simple_label(label):
+        return True
+    elif is_hard_drive_extended_label(label):
+        return True
+
+    return False
+
+
+def is_hard_file_simple_label(label: str) -> bool:
     if len(label) != 7:
         return False
 
@@ -320,6 +349,34 @@ def is_hard_file_label(label: str) -> bool:
         return False
 
     return True
+
+
+def is_hard_file_extended_label(label: str) -> bool:
+    if len(label) != 9:
+        return False
+
+    if not label.startswith('BM_HDF'):
+        return False
+
+    if not label[6].isdigit():
+        return False
+
+    if label[7] != '_':
+        return False
+
+    if not label[8].isdigit():
+        return False
+
+    return True
+
+
+def is_hard_file_label(label: str) -> bool:
+    if is_hard_file_simple_label(label):
+        return True
+    elif is_hard_file_extended_label(label):
+        return True
+
+    return False
 
 
 def get_label_floppy_index(label: str):
@@ -333,6 +390,20 @@ def get_label_hard_disk_index(label: str):
 def get_label_hard_file_index(label: str):
     return int(label[6])
 
+
+def get_label_hard_disk_boot_priority(label: str):
+    if not is_hard_drive_extended_label(label):
+        return DEFAULT_BOOT_PRIORITY
+    
+    return int(label[7])
+
+
+def get_label_hard_file_boot_priority(label: str):
+    if not is_hard_file_extended_label(label):
+        return DEFAULT_BOOT_PRIORITY
+
+    return int(label[8])
+    
 
 def force_umount(pathname: str):
     try:
@@ -744,30 +815,37 @@ def run_emulator():
         if idrive:
             if idrive['is_dir']:
                 label = get_medium_label(idrive)
+                boot_priority = get_label_hard_disk_boot_priority(idrive['label'])
 
                 if not label:
                     label = idrive['label'].replace('BM_', '')
 
-                str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},{boot_priority} '.format(
                     drive_index=drive_index,
                     label=label,
-                    pathname=idrive['pathname']
+                    pathname=idrive['pathname'],
+                    boot_priority=boot_priority
                 )
-                str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},0 '.format(
+                str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},{boot_priority} '.format(
                     drive_index=drive_index,
                     label=label,
-                    pathname=idrive['pathname']
+                    pathname=idrive['pathname'],
+                    boot_priority=boot_priority
                 )
 
                 drive_index += 1
             elif idrive['is_hdf']:
-                str_drives += ' -s hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,0,,uae1,0 '.format(
+                boot_priority = get_label_hard_file_boot_priority(idrive['label'])
+
+                str_drives += ' -s hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0 '.format(
                     drive_index=drive_index,
-                    pathname=idrive['pathname']
+                    pathname=idrive['pathname'],
+                    boot_priority=boot_priority
                 )
-                str_drives += ' -s uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,0,,uae1,0 '.format(
+                str_drives += ' -s uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0 '.format(
                     drive_index=drive_index,
-                    pathname=idrive['pathname']
+                    pathname=idrive['pathname'],
+                    boot_priority=boot_priority
                 )
 
                 drive_index += 1
