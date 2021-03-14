@@ -27,7 +27,7 @@ except ImportError as xie:
     sys.exit(1)
 
 
-APP_UNIXNAME = 'berrymiga'
+APP_UNIXNAME = 'araamiga'
 OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
@@ -37,7 +37,7 @@ EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
-CONFIG_INI_NAME = '.berrymiga.ini'
+CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
@@ -288,7 +288,7 @@ def is_floppy_label(label: str) -> bool:
     if len(label) != 6:
         return False
 
-    if not label.startswith('BM_DF'):
+    if not label.startswith('ARA_DF'):
         return False
 
     if not label[5].isdigit():
@@ -301,7 +301,7 @@ def is_hard_drive_simple_label(label: str) -> bool:
     if len(label) != 6:
         return False
 
-    if not label.startswith('BM_DH'):
+    if not label.startswith('ARA_DH'):
         return False
 
     if not label[5].isdigit():
@@ -314,7 +314,7 @@ def is_hard_drive_extended_label(label: str) -> bool:
     if len(label) != 8:
         return False
 
-    if not label.startswith('BM_DH'):
+    if not label.startswith('ARA_DH'):
         return False
 
     if not label[5].isdigit():
@@ -339,13 +339,13 @@ def is_hard_drive_label(label: str) -> bool:
 
 
 def is_hard_file_simple_label(label: str) -> bool:
-    if len(label) != 7:
+    if len(label) != 8:
         return False
 
-    if not label.startswith('BM_HDF'):
+    if not label.startswith('ARA_HDF'):
         return False
 
-    if not label[6].isdigit():
+    if not label[7].isdigit():
         return False
 
     return True
@@ -355,16 +355,16 @@ def is_hard_file_extended_label(label: str) -> bool:
     if len(label) != 9:
         return False
 
-    if not label.startswith('BM_HDF'):
+    if not label.startswith('ARA_HDF'):
         return False
 
-    if not label[6].isdigit():
+    if not label[7].isdigit():
         return False
 
-    if label[7] != '_':
+    if label[8] != '_':
         return False
 
-    if not label[8].isdigit():
+    if not label[9].isdigit():
         return False
 
     return True
@@ -380,30 +380,30 @@ def is_hard_file_label(label: str) -> bool:
 
 
 def get_label_floppy_index(label: str):
-    return int(label[5])
+    return int(label[6])
 
 
 def get_label_hard_disk_index(label: str):
-    return int(label[5])
+    return int(label[6])
 
 
 def get_label_hard_file_index(label: str):
-    return int(label[6])
+    return int(label[7])
 
 
 def get_label_hard_disk_boot_priority(label: str):
     if not is_hard_drive_extended_label(label):
         return DEFAULT_BOOT_PRIORITY
     
-    return int(label[7])
+    return int(label[8])
 
 
 def get_label_hard_file_boot_priority(label: str):
     if not is_hard_file_extended_label(label):
         return DEFAULT_BOOT_PRIORITY
 
-    return int(label[8])
-    
+    return int(label[9])
+
 
 def force_umount(pathname: str):
     try:
@@ -818,7 +818,7 @@ def run_emulator():
                 boot_priority = get_label_hard_disk_boot_priority(idrive['label'])
 
                 if not label:
-                    label = idrive['label'].replace('BM_', '')
+                    label = idrive['label']
 
                 str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},{boot_priority} '.format(
                     drive_index=drive_index,
