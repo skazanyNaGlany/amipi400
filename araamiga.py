@@ -285,45 +285,45 @@ def unmount_partitions(partitions: dict, old_partitions: dict):
 
 
 def is_floppy_label(label: str) -> bool:
-    if len(label) != 6:
+    if len(label) != 7:
         return False
 
     if not label.startswith('ARA_DF'):
         return False
 
-    if not label[5].isdigit():
+    if not label[6].isdigit():
         return False
 
     return True
 
 
 def is_hard_drive_simple_label(label: str) -> bool:
-    if len(label) != 6:
+    if len(label) != 7:
         return False
 
     if not label.startswith('ARA_DH'):
         return False
 
-    if not label[5].isdigit():
+    if not label[6].isdigit():
         return False
 
     return True
 
 
 def is_hard_drive_extended_label(label: str) -> bool:
-    if len(label) != 8:
+    if len(label) != 9:
         return False
 
     if not label.startswith('ARA_DH'):
         return False
 
-    if not label[5].isdigit():
+    if not label[6].isdigit():
         return False
 
-    if label[6] != '_':
+    if label[7] != '_':
         return False
 
-    if not label[7].isdigit():
+    if not label[8].isdigit():
         return False
 
     return True
@@ -352,7 +352,7 @@ def is_hard_file_simple_label(label: str) -> bool:
 
 
 def is_hard_file_extended_label(label: str) -> bool:
-    if len(label) != 9:
+    if len(label) != 10:
         return False
 
     if not label.startswith('ARA_HDF'):
