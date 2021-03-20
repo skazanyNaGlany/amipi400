@@ -1,14 +1,15 @@
 import sys
+import os
 
 assert sys.platform == 'linux', "This script must be run only on Linux"
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, "This script requires Python 3.5+"
+assert os.geteuid() == 0, "This script must be run as root"
 
 try:
     import pyudev
     import psutil
     import sh
     import time
-    import os
     import tempfile
     import sys
     import fnmatch
@@ -33,7 +34,7 @@ EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
 MAX_DRIVES = 6
-EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom {floppies} {drives} {cdimage}'
+EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s bsdsocket_emu=true {floppies} {drives} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
 # EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
