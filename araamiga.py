@@ -45,6 +45,7 @@ AUTOSEND_SIGNAL = True
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
+drives_changed = False
 commands = []
 
 partitions = None
@@ -197,6 +198,55 @@ def print_commands():
             index=index,
             cmd=icmd
         ))
+
+
+def process_changed_drives():
+    global drives_changed
+
+    if not drives_changed:
+        return
+
+    drives_changed = False
+
+    # first of all we must remove all drives
+    # from the emulator, then we will be able to attach
+    # hard drives and directories (as hard drives)
+
+    for ihd_no, ihd_data in enumerate(drives):
+        put_command('ext_cfgfile_parse_line_hw hardfile2=')
+        put_command('ext_cfgfile_parse_line_hw filesystem2=')
+        put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}='.format(
+            drive_index=ihd_no
+        ))
+
+    drive_index = 0
+
+    for index, idrive in enumerate(drives):
+        if idrive:
+            if idrive['is_dir']:
+                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+
+                put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+                    config0=drive_config[0]
+                ))
+                put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+                    config1=drive_config[1]
+                ))
+
+                drive_index += 1
+            elif idrive['is_hdf']:
+                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+
+                put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+                    config0=drive_config[0]
+                ))
+                put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+                    config1=drive_config[1]
+                ))
+
+                drive_index += 1
+
+    put_command('uae_reset 0,0')
 
 
 def send_SIGUSR1_signal():
@@ -534,6 +584,7 @@ def process_other_mounted(partitions: dict):
 
 def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     global drives
+    global drives_changed
 
     mountpoint = ipart_data['mountpoint']
 
@@ -560,10 +611,12 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
             'is_hdf': False
         }
 
-        put_command('ext_hd_disk_dir_attach DH{index},{mountpoint},1'.format(
-            index=hd_no,
-            mountpoint=mountpoint
-        ))
+        drives_changed = True
+
+        # put_command('ext_hd_disk_dir_attach DH{index},{mountpoint},1'.format(
+        #     index=hd_no,
+        #     mountpoint=mountpoint
+        # ))
 
         return True
     else:
@@ -576,6 +629,7 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
 
 def attach_mountpoint_hard_file(ipart_dev, ipart_data):
     global drives
+    global drives_changed
 
     mountpoint = ipart_data['mountpoint']
 
@@ -608,10 +662,12 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
             'is_hdf': True
         }
 
-        put_command('ext_hd_disk_file_attach DH{index},{pathname},1'.format(
-            index=hd_no,
-            pathname=first_hdf
-        ))
+        drives_changed = True
+
+        # put_command('ext_hd_disk_file_attach DH{index},{pathname},1'.format(
+        #     index=hd_no,
+        #     pathname=first_hdf
+        # ))
 
         return True
     else:
@@ -625,6 +681,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 def process_unmounted(unmounted: list):
     global floppies
     global drives
+    global drives_changed
 
     detached = []
 
@@ -660,17 +717,18 @@ def process_unmounted(unmounted: list):
                 is_dir = ihd_data['is_dir']
 
                 drives[idh_no] = None
+                drives_changed = True
 
-                if is_dir:
-                    put_command('ext_hd_disk_dir_detach {index}'.format(
-                        index=idh_no
-                    ))
-                    put_command('uae_reset 0,0')
-                else:
-                    put_command('ext_hd_disk_file_detach {index}'.format(
-                        index=idh_no
-                    ))
-                    put_command('uae_reset 0,0')
+                # if is_dir:
+                #     put_command('ext_hd_disk_dir_detach {index}'.format(
+                #         index=idh_no
+                #     ))
+                #     put_command('uae_reset 0,0')
+                # else:
+                #     put_command('ext_hd_disk_file_detach {index}'.format(
+                #         index=idh_no
+                #     ))
+                #     put_command('uae_reset 0,0')
 
                 detached.append(idevice)
 
@@ -798,6 +856,50 @@ def is_emulator_running():
     return False
 
 
+def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
+    config = []
+
+    label = get_medium_label(drive_data)
+    boot_priority = get_label_hard_disk_boot_priority(drive_data['label'])
+
+    if not label:
+        label = drive_data['label']
+
+    config.append('filesystem2=rw,DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
+        drive_index=drive_index,
+        label=label,
+        pathname=drive_data['pathname'],
+        boot_priority=boot_priority
+    ))
+    config.append('uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
+        drive_index=drive_index,
+        label=label,
+        pathname=drive_data['pathname'],
+        boot_priority=boot_priority
+    ))
+
+    return config
+
+
+def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
+    config = []
+
+    boot_priority = get_label_hard_file_boot_priority(idrive['label'])
+
+    config.append('hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0'.format(
+        drive_index=drive_index,
+        pathname=idrive['pathname'],
+        boot_priority=boot_priority
+    ))
+    config.append('uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0'.format(
+        drive_index=drive_index,
+        pathname=idrive['pathname'],
+        boot_priority=boot_priority
+    ))
+
+    return config
+
+
 def run_emulator():
     global floppies
 
@@ -810,43 +912,28 @@ def run_emulator():
 
     for index, ifloppy in enumerate(floppies):
         if ifloppy:
-            str_floppies += r' -{index} "{pathname}"'.format(index=index, pathname=ifloppy['pathname'])
+            str_floppies += r' -{index} "{pathname}"'.format(
+                index=index,
+                pathname=ifloppy['pathname']
+            )
 
     for index, idrive in enumerate(drives):
         if idrive:
             if idrive['is_dir']:
-                label = get_medium_label(idrive)
-                boot_priority = get_label_hard_disk_boot_priority(idrive['label'])
+                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
 
-                if not label:
-                    label = idrive['label']
-
-                str_drives += ' -s filesystem2=rw,DH{drive_index}:{label}:{pathname},{boot_priority} '.format(
-                    drive_index=drive_index,
-                    label=label,
-                    pathname=idrive['pathname'],
-                    boot_priority=boot_priority
-                )
-                str_drives += ' -s uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},{boot_priority} '.format(
-                    drive_index=drive_index,
-                    label=label,
-                    pathname=idrive['pathname'],
-                    boot_priority=boot_priority
+                str_drives += ' -s {config0} -s {config1} '.format(
+                    config0=drive_config[0],
+                    config1=drive_config[1]
                 )
 
                 drive_index += 1
             elif idrive['is_hdf']:
-                boot_priority = get_label_hard_file_boot_priority(idrive['label'])
+                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
 
-                str_drives += ' -s hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0 '.format(
-                    drive_index=drive_index,
-                    pathname=idrive['pathname'],
-                    boot_priority=boot_priority
-                )
-                str_drives += ' -s uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0 '.format(
-                    drive_index=drive_index,
-                    pathname=idrive['pathname'],
-                    boot_priority=boot_priority
+                str_drives += ' -s {config0} -s {config1} '.format(
+                    config0=drive_config[0],
+                    config1=drive_config[1]
                 )
 
                 drive_index += 1
@@ -963,6 +1050,7 @@ while True:
 
     old_partitions = partitions
 
+    process_changed_drives()
     print_commands()
 
     if commands:
