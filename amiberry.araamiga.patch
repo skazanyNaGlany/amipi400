@@ -42,32 +42,130 @@ index 4872239e..6686abdb 100644
  
  ifeq ($(ANDROID), 1)
  OBJS += src/osdep/gui/androidsdl_event.o \
+diff --git a/conf/amiberry.conf b/conf/amiberry.conf
+index 542086c4..16b3fb25 100644
+--- a/conf/amiberry.conf
++++ b/conf/amiberry.conf
+@@ -6,20 +6,19 @@ swap_win_alt_keys=no
+ gui_joystick_control=yes
+ use_sdl2_render_thread=no
+ input_default_mouse_speed=100
+-input_keyboard_as_joystick_stop_keypresses=no
+ default_open_gui_key=F12
+ default_quit_key=
+ default_ar_key=Pause
+ default_fullscreen_toggle_key=
+ rotation_angle=0
+-default_horizontal_centering=no
++default_horizontal_centering=yes
+ default_vertical_centering=no
+ default_scaling_method=-1
+ default_frameskip=no
+ default_correct_aspect_ratio=yes
+ default_auto_height=no
+-default_width=640
+-default_height=512
++default_width=720
++default_height=270
+ default_fullscreen=no
+ default_stereo_separation=7
+ default_joystick_deadzone=33
+@@ -31,4 +30,53 @@ default_controller2=joy2
+ default_controller3=
+ default_controller4=
+ default_mouse1=mouse
+-default_mouse2=joy0
+\ No newline at end of file
++default_mouse2=joy0
++path=/home/pi/projects.local/
++config_path=/home/pi/projects.local/amiberry/conf/
++controllers_path=/home/pi/projects.local/amiberry/controllers/
++retroarch_config=/home/pi/projects.local/amiberry/conf/retroarch.cfg
++logfile_path=/home/pi/projects.local/amiberry/amiberry.log
++rom_path=/home/pi/projects.local/amiberry/kickstarts/
++ROMs=13
++ROMName=KS ROM v1.2 (A500,A1000,A2000) rev 33.180 (256k) [315093-01]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart1.2.rom
++ROMType=256
++ROMName=KS ROM v1.3 (A500,A1000,A2000) rev 34.5 (256k) [315093-02]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart1.3.rom
++ROMType=256
++ROMName=KS ROM v2.04 (A500+) rev 37.175 (512k) [390979-01]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart2.0.rom
++ROMType=256
++ROMName=KS ROM v3.0 (A4000) rev 39.106 (512k) [391513-02/391514-02]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart3.0.rom
++ROMType=256
++ROMName=KS ROM v3.1 (A500,A600,A2000) rev 40.63 (512k)
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart3.1.rom
++ROMType=256
++ROMName=KS ROM v3.1 (A500,A600,A2000) rev 40.63 (512k)
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/Kickstart4.0.rom
++ROMType=256
++ROMName=KS ROM v1.2 (A500,A1000,A2000) rev 33.180 (256k) [315093-01]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/kick33180.A500
++ROMType=256
++ROMName=KS ROM v1.2 (A500,A1000,A2000) rev 33.180 (256k) [315093-01]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/kick33192.A500
++ROMType=256
++ROMName=KS ROM v1.3 (A500,A1000,A2000) rev 34.5 (256k) [315093-02]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/kick34005.A500
++ROMType=256
++ROMName=KS ROM v3.1 (A1200) rev 40.68 (512k) [391773-01/391774-01]
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/kick40068.A1200
++ROMType=256
++ROMName=KS ROM v3.1 (A4000) rev 40.68 (512k)
++ROMPath=/home/pi/projects.local/amiberry/kickstarts/kick40068.A4000
++ROMType=256
++ROMName=Freezer: HRTMon v2.37 (built-in)
++ROMPath=:HRTMon
++ROMType=524291
++ROMName= AROS KS ROM (built-in) (1024k)
++ROMPath=:AROS
++ROMType=256
++MRUDiskList=0
++MRUCDList=0
++MRUWHDLoadList=0
 diff --git a/src/araamiga/consts.h b/src/araamiga/consts.h
 new file mode 100644
-index 00000000..e8c82cf5
+index 00000000..d568d30c
 --- /dev/null
 +++ b/src/araamiga/consts.h
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +#ifndef ARAAMIGA_CONSTS_H_
 +#define ARAAMIGA_CONSTS_H_
 +
 +#define TMP_INI_FILE "amiberry.tmp.ini"
 +#define APP_NAME "ARAAMIGA"
++#define STRING_BUFFER_LENGTH 255
 +
 +#endif  // ARAAMIGA_CONSTS_H_
 diff --git a/src/araamiga/externals.h b/src/araamiga/externals.h
 new file mode 100644
-index 00000000..c8ffa9aa
+index 00000000..e970d747
 --- /dev/null
 +++ b/src/araamiga/externals.h
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,22 @@
 +#ifndef ARAAMIGA_EXTERNALS_H_
 +#define ARAAMIGA_EXTERNALS_H_
++
++extern struct uae_prefs currprefs, changed_prefs;
++extern char last_active_config[4096];
 +
 +void uae_quit(void);
 +void uae_reset(int hardreset, int keyboardreset);
 +void ext_disk_eject(int num);
 +void ext_disk_insert_force(int num, const char *name, bool forcedwriteprotect);
++void ext_cfgfile_parse_line_hw(char *config_string);
++int kill_filesys_unitconfig (struct uae_prefs *p, int nr);
++void set_config_changed(void);
++void gui_force_rtarea_hdchange();
++void RefreshPanelHD();
++void filesys_reset (void);
++int filesys_eject(int nr);
++int target_cfgfile_load(struct uae_prefs* p, const char* filename, int type, int isdefault);
++void disable_resume();
++void refresh_all_panels();
 +
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
@@ -115,18 +213,23 @@ index 00000000..d276f220
 +#endif  // ARAAMIGA_HANDLER_H_
 diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
 new file mode 100644
-index 00000000..94169baa
+index 00000000..26fe58c5
 --- /dev/null
 +++ b/src/araamiga/ini-exec.cpp
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,207 @@
 +#include <string>
++#include <cstring>
 +#include <fstream>
 +#include <iostream>
++#include <unistd.h>
 +
 +#include "ini-exec.h"
 +#include "consts.h"
 +#include "externals.h"
 +#include "utils.h"
++
++
++char config_string[STRING_BUFFER_LENGTH];
 +
 +
 +int execute_ini_file(const std::string &pathname) {
@@ -194,6 +297,14 @@ index 00000000..94169baa
 +}
 +
 +
++void _comand_ext_cfgfile_parse_line_hw(const std::string &command_data) {
++    memset(config_string, 0, STRING_BUFFER_LENGTH);
++    strncpy(config_string, command_data.c_str(), STRING_BUFFER_LENGTH);
++
++    ext_cfgfile_parse_line_hw(config_string);
++}
++
++
 +void _comand_uae_reset(const std::string &command_data) {
 +    std::vector<std::string> parts;
 +
@@ -208,6 +319,38 @@ index 00000000..94169baa
 +        atoi(parts[0].c_str()),
 +        atoi(parts[1].c_str())
 +    );
++}
++
++
++void _comand_target_cfgfile_load(const std::string &command_data) {
++    std::vector<std::string> parts;
++
++    parts = string_split(command_data, ',');
++
++    if (parts.size() != 3) {
++        printf("[%s] skip wrong formatted command: %s\n", APP_NAME, command_data.c_str());
++        return;
++    }
++    printf("%s\n", parts[0].c_str());
++    printf("%d\n", atoi(parts[1].c_str()));
++    printf("%d\n", atoi(parts[2].c_str()));
++
++    // disable_resume();
++    target_cfgfile_load( 
++        &currprefs,
++        parts[0].c_str(),
++        atoi(parts[1].c_str()),
++        atoi(parts[2].c_str())
++    );
++    // target_cfgfile_load(
++    //     &changed_prefs,
++    //     parts[0].c_str(),
++    //     atoi(parts[1].c_str()),
++    //     atoi(parts[2].c_str())
++    // );
++
++    // strncpy(last_active_config, parts[0].c_str(), 4096);
++    // refresh_all_panels();
 +}
 +
 +
@@ -238,15 +381,55 @@ index 00000000..94169baa
 +    else if (string_starts_with(raw_command, "uae_quit ")) {
 +        uae_quit();
 +    }
++    else if (string_starts_with(raw_command, "ext_cfgfile_parse_line_hw ")) {
++        _comand_ext_cfgfile_parse_line_hw(string_cut_from_string(raw_command, " "));
++    }
++    else if (string_starts_with(raw_command, "kill_filesys_unitconfig ")) {
++        kill_filesys_unitconfig(
++            &changed_prefs,
++            atoi(string_cut_from_string(raw_command, " ").c_str())
++        );
++    }
++    else if (string_starts_with(raw_command, "kill_filesys_unitconfig2 ")) {
++        kill_filesys_unitconfig(
++            &currprefs,
++            atoi(string_cut_from_string(raw_command, " ").c_str())
++        );
++    }
++    else if (string_starts_with(raw_command, "sleep ")) {
++        sleep(
++            atoi(string_cut_from_string(raw_command, " ").c_str())
++        );
++    }
++    else if (string_starts_with(raw_command, "set_config_changed")) {
++        set_config_changed();
++    }
++    else if (string_starts_with(raw_command, "gui_force_rtarea_hdchange")) {
++        gui_force_rtarea_hdchange();
++    }
++    else if (string_starts_with(raw_command, "RefreshPanelHD")) {
++        RefreshPanelHD();
++    }
++    else if (string_starts_with(raw_command, "filesys_reset")) {
++        filesys_reset();
++    }
++    else if (string_starts_with(raw_command, "filesys_eject ")) {
++        filesys_eject(
++            atoi(string_cut_from_string(raw_command, " ").c_str())
++        );
++    }
++    else if (string_starts_with(raw_command, "target_cfgfile_load ")) {
++        _comand_target_cfgfile_load(string_cut_from_string(raw_command, " "));
++    }
 +
 +    return 0;
 +}
 diff --git a/src/araamiga/ini-exec.h b/src/araamiga/ini-exec.h
 new file mode 100644
-index 00000000..a889d4bb
+index 00000000..fc9e26e4
 --- /dev/null
 +++ b/src/araamiga/ini-exec.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,15 @@
 +#ifndef ARAAMIGA_INI_EXEC_H_
 +#define ARAAMIGA_INI_EXEC_H_
 +
@@ -258,6 +441,8 @@ index 00000000..a889d4bb
 +void _comand_ext_disk_eject(const std::string &command_data);
 +void _comand_ext_disk_insert_force(const std::string &command_data);
 +void _comand_uae_reset(const std::string &command_data);
++void _comand_ext_cfgfile_parse_line_hw(const std::string &command_data);
++void _comand_target_cfgfile_load(const std::string &command_data);
 +
 +#endif  // ARAAMIGA_INI_EXEC_H_
 diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
@@ -419,6 +604,21 @@ index 2e8c716e..6e481f85 100644
  static void disk_insert_2 (int num, const TCHAR *name, bool forced, bool forcedwriteprotect)
  {
  	drive *drv = floppy + num;
+diff --git a/src/main.cpp b/src/main.cpp
+index 0f62bff2..7daf8a59 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -770,6 +770,10 @@ std::string get_filename_extension(const TCHAR* filename)
+ 	return fName.substr(pos, fName.length());
+ }
+ 
++void ext_cfgfile_parse_line_hw(char *config_string) {
++	cfgfile_parse_line(&currprefs, config_string, 0);
++}
++
+ static void parse_cmdline(int argc, TCHAR** argv)
+ {
+ 	static bool started;
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
 index 5dc6deee..1854ae5e 100644
 --- a/src/osdep/amiberry.cpp
@@ -473,6 +673,19 @@ index 5dc6deee..1854ae5e 100644
 -}
 \ No newline at end of file
 +}
+diff --git a/src/osdep/gui/PanelHD.cpp b/src/osdep/gui/PanelHD.cpp
+index f54c31b2..f557f3a3 100644
+--- a/src/osdep/gui/PanelHD.cpp
++++ b/src/osdep/gui/PanelHD.cpp
+@@ -387,6 +387,8 @@ void InitPanelHD(const struct _ConfigCategory& category)
+ 		listCmdDelete[row]->setId(tmp);
+ 		listCmdDelete[row]->addActionListener(hdRemoveActionListener);
+ 
++		// listCmdDelete[row]->
++
+ 		for (col = 0; col < COL_COUNT; ++col)
+ 		{
+ 			listCells[row][col] = new gcn::TextField();
 diff --git a/src/zfile.cpp b/src/zfile.cpp
 index 6bc1330a..82cae620 100644
 --- a/src/zfile.cpp
