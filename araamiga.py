@@ -16,6 +16,7 @@ try:
     import re
     import psutil
     import subprocess
+    import copy
 
     from pprint import pprint
     from collections import OrderedDict
@@ -29,19 +30,267 @@ except ImportError as xie:
 
 
 APP_UNIXNAME = 'araamiga'
-OWN_MOUNT_POINT_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
+TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
+CONFIG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'default.uae')
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
 MAX_DRIVES = 6
-EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s cpu_type=68ec020 -s cpu_model=68020 -s cpu_multiplier=2 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s bsdsocket_emu=true -s chipmem_size=16 {floppies} {drives} {cdimage}'
-# EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_fullscreen_amiga=false -s gfx_fullscreen_picasso=false -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -c 2048 -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none -s magic_mouse=none {floppies} {cdimage}'
-# EMULATOR_RUN_PATTERN = '{executable} -m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
-# EMULATOR_RUN_PATTERN = '-m a1200 -G -c 8192 -F 8192 -s amiberry.gfx_correct_aspect=0 -s gfx_fullscreen_amiga=true -s gfx_fullscreen_picasso=true -s gfx_center_horizontal=smart -s gfx_center_vertical=smart -s amiberry.gfx_auto_height=true -s joyport1=none -s chipset=aga -s finegrain_cpu_speed=1024 -r kickstarts/Kickstart3.1.rom -s amiberry.open_gui=none {floppies} {cdimage}'
+MODEL = 'A1200'
+KICKSTART_PATHNAME = 'kickstarts/Kickstart3.1.rom'
+EMULATOR_RUN_PATTERN = '{executable} -m {MODEL} -G --config {config_pathname} -r {KICKSTART_PATHNAME}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
+CUSTOM_CONFIG = {
+    'cpu_type': '68ec020',
+    'cpu_model': '68020',
+    'cpu_multiplier': '2',
+    'amiberry__gfx_correct_aspect': '0',
+    'gfx_width': '720',
+    'gfx_width_windowed': '720',
+    'gfx_height': '568',
+    'gfx_height_windowed': '568',
+    # 'gfx_fullscreen_amiga': 'false',
+    # 'gfx_fullscreen_picasso': 'false',
+    'gfx_fullscreen_amiga': 'fullwindow',
+    'gfx_fullscreen_picasso': 'fullwindow',
+    'joyport1': 'none',
+    'chipset': 'aga',
+    'finegrain_cpu_speed': '1024',
+    'bsdsocket_emu': 'true',
+    'chipmem_size': '16',
+    'hard_drives': ''
+}
+CONFIG = """
+config_description=UAE default configuration
+config_hardware=true
+config_host=true
+config_version=4.4.0
+config_hardware_path=
+config_host_path=
+config_all_path=
+amiberry.rom_path=./
+amiberry.floppy_path=./
+amiberry.hardfile_path=./
+amiberry.cd_path=./
+; 
+; *** Controller/Input Configuration
+; 
+joyport0=mouse
+joyport0_autofire=none
+joyport0_friendlyname=Mouse
+joyport0_name=MOUSE0
+; 
+joyport1={joyport1}
+joyport1_autofire=none
+joyport1_friendlyname=ShanWan PS3/PC Adaptor
+joyport1_name=JOY1
+; 
+; 
+; 
+input.joymouse_speed_analog=2
+input.joymouse_speed_digital=10
+input.joymouse_deadzone=33
+input.joystick_deadzone=33
+input.analog_joystick_multiplier=18
+input.analog_joystick_offset=-5
+input.mouse_speed=100
+input.autofire_speed=600
+input.autoswitch=1
+kbd_lang=us
+; 
+; *** Host-Specific
+; 
+amiberry.gfx_auto_height=false
+amiberry.gfx_correct_aspect={amiberry__gfx_correct_aspect}
+amiberry.kbd_led_num=-1
+amiberry.kbd_led_scr=-1
+amiberry.scaling_method=-1
+amiberry.allow_host_run=false
+amiberry.use_analogue_remap=false
+amiberry.use_retroarch_quit=true
+amiberry.use_retroarch_menu=true
+amiberry.use_retroarch_reset=false
+amiberry.active_priority=1
+amiberry.inactive_priority=0
+amiberry.minimized_priority=0
+amiberry.minimized_input=0
+; 
+; *** Common / Paths
+; 
+use_gui=no
+kickstart_rom_file=/home/pi/projects.local/amiberry/kickstarts/kick40068.A1200
+kickstart_rom_file_id=1483A091,KS ROM v3.1 (A1200)
+kickstart_ext_rom_file=
+pcmcia_mb_rom_file=:ENABLED
+ide_mb_rom_file=:ENABLED
+flash_file=
+cart_file=
+rtc_file=
+kickshifter=false
+; 
+; *** Floppy Drives
+; 
+floppy_volume=33
+floppy0={floppy0}
+floppy1={floppy1}
+floppy1type=-1
+floppy2={floppy2}
+floppy3={floppy3}
+nr_floppies=1
+floppy_speed=100
+; 
+; *** Hard Drives
+; 
+{hard_drives}
+scsi=false
+; 
+; *** CD / CD32
+; 
+cd_speed=100
+; 
+; *** Display / Screen Setup
+; 
+gfx_framerate=1
+gfx_width={gfx_width}
+gfx_height={gfx_height}
+gfx_top_windowed=0
+gfx_left_windowed=0
+gfx_width_windowed={gfx_width_windowed}
+gfx_height_windowed={gfx_height_windowed}
+gfx_width_fullscreen=800
+gfx_height_fullscreen=600
+gfx_refreshrate=50
+gfx_refreshrate_rtg=50
+gfx_backbuffers=2
+gfx_backbuffers_rtg=1
+gfx_vsync=false
+gfx_vsyncmode=normal
+gfx_vsync_picasso=false
+gfx_vsyncmode_picasso=normal
+gfx_lores=false
+gfx_resolution=hires
+gfx_lores_mode=normal
+gfx_flickerfixer=false
+gfx_linemode=none
+gfx_fullscreen_amiga={gfx_fullscreen_amiga}
+gfx_fullscreen_picasso={gfx_fullscreen_picasso}
+gfx_center_horizontal=none
+gfx_center_vertical=none
+gfx_colour_mode=32bit
+gfx_blacker_than_black=false
+gfx_api=directdraw
+gfx_api_options=hardware
+; 
+; *** CPU options
+; 
+finegrain_cpu_speed={finegrain_cpu_speed}
+cpu_throttle=0.0
+cpu_type={cpu_type}
+cpu_model={cpu_model}
+; cpu_multiplier not exists in default config
+cpu_multiplier={cpu_multiplier}
+cpu_compatible=true
+cpu_24bit_addressing=true
+cpu_data_cache=false
+cpu_cycle_exact=false
+cpu_memory_cycle_exact=true
+blitter_cycle_exact=false
+cycle_exact=false
+fpu_strict=false
+comp_trustbyte=direct
+comp_trustword=direct
+comp_trustlong=direct
+comp_trustnaddr=direct
+comp_nf=true
+comp_constjump=true
+comp_flushmode=soft
+compfpu=false
+comp_catchfault=true
+cachesize=0
+; 
+; *** Memory
+; 
+z3mapping=real
+fastmem_size=0
+a3000mem_size=0
+mbresmem_size=0
+z3mem_size=0
+z3mem_start=0x40000000
+bogomem_size=0
+gfxcard_hardware_vblank=false
+gfxcard_hardware_sprite=false
+gfxcard_multithread=false
+chipmem_size={chipmem_size}
+rtg_modes=0x112
+; 
+; *** Chipset
+; 
+immediate_blits=false
+fast_copper=false
+ntsc=false
+chipset={chipset}
+chipset_refreshrate=49.920410
+collision_level=playfields
+chipset_compatible=A1200
+rtc=none
+ksmirror_a8=true
+pcmcia=true
+ide=a600/a1200
+; 
+; *** Sound Options
+; 
+sound_output=exact
+sound_channels=stereo
+sound_stereo_separation=7
+sound_stereo_mixing_delay=0
+sound_max_buff=16384
+sound_frequency=44100
+sound_interpol=anti
+sound_filter=emulated
+sound_filter_type=standard
+sound_volume=0
+sound_volume_paula=0
+sound_volume_cd=20
+sound_volume_ahi=0
+sound_volume_midi=0
+sound_volume_genlock=0
+sound_auto=true
+sound_cdaudio=false
+sound_stereo_swap_paula=false
+sound_stereo_swap_ahi=false
+; 
+; *** Misc. Options
+; 
+parallel_on_demand=false
+serial_on_demand=false
+serial_hardware_ctsrts=true
+serial_direct=false
+uaeserial=false
+sana2=false
+bsdsocket_emu={bsdsocket_emu}
+synchronize_clock=false
+maprom=0x0
+parallel_postscript_emulation=false
+parallel_postscript_detection=false
+ghostscript_parameters=
+parallel_autoflush=5
+; 
+; *** WHDLoad Booter. Options
+; 
+whdload_slave=
+whdload_showsplash=false
+whdload_buttonwait=false
+whdload_custom1=0
+whdload_custom2=0
+whdload_custom3=0
+whdload_custom4=0
+whdload_custom5=0
+whdload_custom=
+"""
+
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -55,7 +304,7 @@ key_alt_pressed = False
 key_delete_pressed = False
 ctrl_alt_del_press_ts = 0
 
-os.makedirs(OWN_MOUNT_POINT_PREFIX, exist_ok=True)
+os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
 
 def check_pre_requirements():
@@ -126,7 +375,7 @@ def get_partitions2() -> OrderedDict:
         device_data = {
             'mountpoint': found[3],
             'internal_mountpoint': os.path.join(
-                OWN_MOUNT_POINT_PREFIX,
+                TMP_PATH_PREFIX,
                 get_relative_path(full_path)
             ),
             'label': found[4],
@@ -212,41 +461,144 @@ def process_changed_drives():
     # from the emulator, then we will be able to attach
     # hard drives and directories (as hard drives)
 
-    for ihd_no, ihd_data in enumerate(drives):
-        put_command('ext_cfgfile_parse_line_hw hardfile2=')
-        put_command('ext_cfgfile_parse_line_hw filesystem2=')
-        put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}='.format(
-            drive_index=ihd_no
-        ))
+    # put_command('filesys_eject 0')
 
-    drive_index = 0
+    # put_command('kill_filesys_unitconfig 0')
 
-    for index, idrive in enumerate(drives):
-        if idrive:
-            if idrive['is_dir']:
-                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
 
-                put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-                    config0=drive_config[0]
-                ))
-                put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-                    config1=drive_config[1]
-                ))
+    # for ihd_no, ihd_data in enumerate(drives):
+    #     # put_command('kill_filesys_unitconfig 0')
+    #     put_command('kill_filesys_unitconfig {drive_index}'.format(
+    #         drive_index=ihd_no
+    #     ))
 
-                drive_index += 1
-            elif idrive['is_hdf']:
-                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+    # put_command('gui_force_rtarea_hdchange')
+    # put_command('RefreshPanelHD')
 
-                put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-                    config0=drive_config[0]
-                ))
-                put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-                    config1=drive_config[1]
-                ))
+    # put_command('kill_filesys_unitconfig2 0')
+    # put_command('kill_filesys_unitconfig2 1')
+    # put_command('kill_filesys_unitconfig2 2')
+    # put_command('kill_filesys_unitconfig2 3')
+    # put_command('kill_filesys_unitconfig2 4')
+    # put_command('kill_filesys_unitconfig2 5')
 
-                drive_index += 1
+    # # put_command('set_config_changed')
+    # # put_command('filesys_reset')
+    # put_command('uae_reset 1,1')
+    # # put_command('sleep 3')
 
-    put_command('uae_reset 0,0')
+
+    #     put_command('kill_filesys_unitconfig {drive_index}'.format(
+    #         drive_index=ihd_no
+    #     ))
+
+    # put_command('uae_reset 0,1')
+
+    #     # put_command('ext_cfgfile_parse_line_hw hardfile2=HD_0')
+    #     # put_command('ext_cfgfile_parse_line_hw filesystem2=HD_0')
+    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=false'.format(
+    #         drive_index=ihd_no
+    #     ))
+
+
+
+    # for ihd_no, ihd_data in enumerate(drives):
+    #     put_command('ext_cfgfile_parse_line_hw hardfile2=,')
+    #     put_command('ext_cfgfile_parse_line_hw filesystem2=,')
+    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=,'.format(
+    #         drive_index=ihd_no
+    #     ))
+
+    # for ihd_no, ihd_data in enumerate(drives):
+    #     put_command('ext_cfgfile_parse_line_hw hardfile2=rw,DH{drive_index}:empty,0,0,0,512,1,,uae1,0'.format(
+    #         drive_index=ihd_no
+    #     ))
+    #     put_command('ext_cfgfile_parse_line_hw filesystem2=rw,DH{drive_index}:empty:empty,0'.format(
+    #         drive_index=ihd_no
+    #     ))
+    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=empty'.format(
+    #         drive_index=ihd_no
+    #     ))
+
+    # for ihd_no, ihd_data in enumerate(drives):
+    #     put_command('filesys_eject {drive_index}'.format(
+    #         drive_index=ihd_no
+    #     ))
+
+    # put_command('sleep 3')
+
+
+
+
+
+    # drive_index = 0
+
+    # for index, idrive in enumerate(drives):
+    #     if idrive:
+    #         if idrive['is_dir']:
+    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+
+    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+    #                 config0=drive_config[0]
+    #             ))
+    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+    #                 config1=drive_config[1]
+    #             ))
+
+    #             drive_index += 1
+    #         elif idrive['is_hdf']:
+    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+
+    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+    #                 config0=drive_config[0]
+    #             ))
+    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+    #                 config1=drive_config[1]
+    #             ))
+
+    #             drive_index += 1
+
+    # put_command('set_config_changed')
+    # put_command('uae_reset 0,0')
+
+    generate_config()
+
+    # put_command('uae_reset 1,1')
+
+    put_command('target_cfgfile_load {config_pathname},0,0'.format(
+        config_pathname=CONFIG_PATHNAME
+    ))
+
+    # drive_index = 0
+
+    # for index, idrive in enumerate(drives):
+    #     if idrive:
+    #         if idrive['is_dir']:
+    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+
+    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+    #                 config0=drive_config[0]
+    #             ))
+    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+    #                 config1=drive_config[1]
+    #             ))
+
+    #             drive_index += 1
+    #         elif idrive['is_hdf']:
+    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+
+    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
+    #                 config0=drive_config[0]
+    #             ))
+    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
+    #                 config1=drive_config[1]
+    #             ))
+
+    #             drive_index += 1
+
+    # put_command('sleep 5')
+    # put_command('uae_reset 0,0')
+    put_command('uae_reset 1,1')
 
 
 def send_SIGUSR1_signal():
@@ -815,6 +1167,9 @@ def put_command(command: str, reset: bool = False):
     """
     global commands
 
+    if reset:
+        commands = []
+
     if commands:
         if commands[len(commands) - 1] == command:
             # do not add same command
@@ -900,49 +1255,105 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
     return config
 
 
+def generate_config(with_hard_drives = True):
+    # make config copy from default config
+    config_copy = copy.deepcopy(CONFIG)
+    config_data_copy = CUSTOM_CONFIG.copy()
+
+    # floppies
+    for index, ifloppy in enumerate(floppies):
+        index_str = str(index)
+
+        config_data_copy['floppy' + index_str] = ''
+
+        if ifloppy:
+            config_data_copy['floppy' + index_str] = ifloppy['pathname']
+
+    # hard drives
+    drive_index = 0
+    hard_drives = ''
+
+    if with_hard_drives:
+        for index, idrive in enumerate(drives):
+            if idrive:
+                if idrive['is_dir']:
+                    drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+
+                    hard_drives += drive_config[0] + '\n'
+                    hard_drives += drive_config[1] + '\n'
+
+                    drive_index += 1
+                elif idrive['is_hdf']:
+                    drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+
+                    hard_drives += drive_config[0] + '\n'
+                    hard_drives += drive_config[1] + '\n'
+
+                    drive_index += 1
+
+    config_data_copy['hard_drives'] = hard_drives
+
+    # fill config
+    config_copy = config_copy.format_map(config_data_copy)
+
+    with open(CONFIG_PATHNAME, 'w+', newline=None) as f:
+        f.write(config_copy)
+
+
 def run_emulator():
     global floppies
 
     print('Running emulator')
 
-    # assign floppies via command line
-    str_floppies = ''
-    str_drives = ''
-    drive_index = 0
+    generate_config()
 
-    for index, ifloppy in enumerate(floppies):
-        if ifloppy:
-            str_floppies += r' -{index} "{pathname}"'.format(
-                index=index,
-                pathname=ifloppy['pathname']
-            )
+    # # assign floppies via command line
+    # str_floppies = ''
+    # str_drives = ''
+    # drive_index = 0
 
-    for index, idrive in enumerate(drives):
-        if idrive:
-            if idrive['is_dir']:
-                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+    # for index, ifloppy in enumerate(floppies):
+    #     if ifloppy:
+    #         str_floppies += r' -{index} "{pathname}"'.format(
+    #             index=index,
+    #             pathname=ifloppy['pathname']
+    #         )
 
-                str_drives += ' -s {config0} -s {config1} '.format(
-                    config0=drive_config[0],
-                    config1=drive_config[1]
-                )
+    # for index, idrive in enumerate(drives):
+    #     if idrive:
+    #         if idrive['is_dir']:
+    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
 
-                drive_index += 1
-            elif idrive['is_hdf']:
-                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+    #             str_drives += ' -s {config0} -s {config1} '.format(
+    #                 config0=drive_config[0],
+    #                 config1=drive_config[1]
+    #             )
 
-                str_drives += ' -s {config0} -s {config1} '.format(
-                    config0=drive_config[0],
-                    config1=drive_config[1]
-                )
+    #             drive_index += 1
+    #         elif idrive['is_hdf']:
+    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
 
-                drive_index += 1
+    #             str_drives += ' -s {config0} -s {config1} '.format(
+    #                 config0=drive_config[0],
+    #                 config1=drive_config[1]
+    #             )
+
+    #             drive_index += 1
+
+    # pattern = EMULATOR_RUN_PATTERN.format(
+    #     executable=EMULATOR_EXE_PATHNAME,
+    #     floppies=str_floppies.strip(),
+    #     drives=str_drives.strip(),
+    #     cdimage=''
+    # )
+
+    # EMULATOR_RUN_PATTERN = '{executable} -m {MODEL} -G --config {config_pathname} -r {KICKSTART_PATHNAME}'
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=EMULATOR_EXE_PATHNAME,
-        floppies=str_floppies.strip(),
-        drives=str_drives.strip(),
-        cdimage=''
+        MODEL=MODEL,
+        config_pathname=CONFIG_PATHNAME,
+        KICKSTART_PATHNAME=KICKSTART_PATHNAME
     )
 
     print('Emulator command line: ' + pattern)
