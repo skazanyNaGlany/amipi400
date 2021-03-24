@@ -17,6 +17,7 @@ try:
     import psutil
     import subprocess
     import copy
+    import logzero
 
     from pprint import pprint
     from collections import OrderedDict
@@ -25,13 +26,17 @@ try:
     from pynput.keyboard import Key, Listener
     from configparser import ConfigParser
 except ImportError as xie:
-    print(xie)
+    print_log(xie)
     sys.exit(1)
 
 
 APP_UNIXNAME = 'araamiga'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 CONFIG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'default.uae')
+LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
+ENABLE_LOGGER = False
+ENABLE_MOUSE_UNGRAB = False
+ENABLE_F12_GUI = True
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
@@ -43,6 +48,9 @@ CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
+MONITOR_STATE_ON = 1
+MONITOR_STATE_KEEP_OFF = 0
+MONITOR_STATE_KEEP_OFF_TO_EMULATOR = 2
 CUSTOM_CONFIG = {
     'cpu_type': '68ec020',
     'cpu_model': '68020',
@@ -61,6 +69,9 @@ CUSTOM_CONFIG = {
     'finegrain_cpu_speed': '1024',
     'bsdsocket_emu': 'true',
     'chipmem_size': '16',
+    'show_leds': 'false',
+    'amiberry__open_gui': 'none',
+    'magic_mouse': 'none',
     'hard_drives': ''
 }
 CONFIG = """
@@ -120,6 +131,7 @@ amiberry.minimized_input=0
 ; 
 ; *** Common / Paths
 ; 
+show_leds={show_leds}
 use_gui=no
 kickstart_rom_file=/home/pi/projects.local/amiberry/kickstarts/kick40068.A1200
 kickstart_rom_file_id=1483A091,KS ROM v3.1 (A1200)
@@ -289,8 +301,13 @@ whdload_custom3=0
 whdload_custom4=0
 whdload_custom5=0
 whdload_custom=
-"""
 
+; 
+; *** ARA custom options
+; 
+amiberry.open_gui={amiberry__open_gui}
+magic_mouse={magic_mouse}
+"""
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -307,30 +324,53 @@ ctrl_alt_del_press_ts = 0
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
 
+def print_log(*args):
+    if ENABLE_LOGGER:
+        if args:
+            logzero.logger.info(*args)
+    else:
+        print(*args)
+
+
+def init_logger():
+    if not ENABLE_LOGGER:
+        return
+
+    print('Logging to ' + LOG_PATHNAME)
+
+    logzero.logfile(LOG_PATHNAME, maxBytes=1e6, backupCount=3, disableStderrLogger=True)
+
+
 def check_pre_requirements():
     check_emulator()
     check_system_binaries()
 
 
 def configure_system():
+    print_log('Configuring system')
+
     os.system('swapoff -a')
-    os.system('sysctl vm.swappiness=0')
-    os.system('sysctl vm.vfs_cache_pressure=200')
+    os.system('sysctl -q vm.swappiness=0')
+    os.system('sysctl -q vm.vfs_cache_pressure=200')
 
 
 def check_emulator():
     global EMULATOR_EXE_PATHNAME
 
+    print_log('Checking emulator')
+
     emu_real_pathname = os.path.realpath(EMULATOR_EXE_PATHNAME)
 
     if not os.path.exists(emu_real_pathname):
-        print('Emulator executable ' + EMULATOR_EXE_PATHNAME + ' does not exists')
+        print_log('Emulator executable ' + EMULATOR_EXE_PATHNAME + ' does not exists')
         sys.exit(1)
 
     EMULATOR_EXE_PATHNAME = emu_real_pathname
 
 
 def check_system_binaries():
+    print_log('Checking system binaries')
+
     bins = [
         'sync',
         'echo',
@@ -342,13 +382,91 @@ def check_system_binaries():
         'lsblk',
         'fincore',
         'sysctl',
-        'swapoff'
+        'swapoff',
+        'xset',
+        'clear'
     ]
 
     for ibin in bins:
         if not sh.which(ibin):
-            print(ibin + ': command not found')
+            print_log(ibin + ': command not found')
             sys.exit(1)
+
+
+monitor_off_timestamp = 0
+monitor_state = MONITOR_STATE_ON
+monitor_off_seconds = 0
+
+
+def turn_off_monitor():
+    os.system('xset dpms force off')
+
+
+def turn_on_monitor():
+    os.system('xset dpms force on')
+
+
+def keep_monitor_off(seconds: int):
+    global monitor_off_timestamp
+    global monitor_state
+    global monitor_off_seconds
+
+    if monitor_state == MONITOR_STATE_KEEP_OFF:
+        return
+
+    monitor_off_timestamp = int(time.time())
+    monitor_state = MONITOR_STATE_KEEP_OFF
+    monitor_off_seconds = seconds
+
+
+def keep_monitor_off_to_emulator(additional_seconds: int):
+    global monitor_off_timestamp
+    global monitor_state
+    global monitor_off_seconds
+
+    if monitor_state == MONITOR_STATE_KEEP_OFF_TO_EMULATOR:
+        return
+
+    monitor_off_timestamp = int(time.time())
+    monitor_state = MONITOR_STATE_KEEP_OFF_TO_EMULATOR
+    monitor_off_seconds = additional_seconds
+
+
+def update_monitor_state():
+    global monitor_off_timestamp
+    global monitor_state
+    global monitor_off_seconds
+
+    if monitor_state == MONITOR_STATE_KEEP_OFF:
+        seconds = int(time.time()) - monitor_off_timestamp
+
+        if seconds < monitor_off_seconds:
+            turn_off_monitor()
+        else:
+            turn_on_monitor()
+            monitor_state = MONITOR_STATE_ON
+    elif monitor_state == MONITOR_STATE_KEEP_OFF_TO_EMULATOR:
+        if not is_emulator_running():
+            return
+
+        keep_monitor_off(monitor_off_seconds)
+
+
+def keyboard_actions():
+    global ctrl_alt_del_press_ts
+
+    if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
+        ctrl_alt_del_press_ts = 0
+
+        kill_emulator()
+
+
+def other_actions():
+    if ENABLE_LOGGER:
+        # logger enabled so clear the console
+        os.system('clear')
+
+    os.system('sync')
 
 
 def get_partitions2() -> OrderedDict:
@@ -398,39 +516,39 @@ def print_partitions(partitions: dict):
     if not partitions:
         return
 
-    print('Known partitions:')
+    print_log('Known partitions:')
 
     for key, value in partitions.items():
-        print(key)
+        print_log(key)
 
-        print('  mountpoint: ' + str(value['mountpoint']))
-        print('  internal_mountpoint: ' + value['internal_mountpoint'])
-        print('  label: ' + str(value['label']))
+        print_log('  mountpoint: ' + str(value['mountpoint']))
+        print_log('  internal_mountpoint: ' + value['internal_mountpoint'])
+        print_log('  label: ' + str(value['label']))
 
-        print()
+        print_log()
 
 
 def print_attached_floppies():
-    print('Attached floppies:')
+    print_log('Attached floppies:')
 
     for idf_index, ifloppy_data in enumerate(floppies):
         if not ifloppy_data:
             continue
 
-        print('DF{index}: {pathname}'.format(
+        print_log('DF{index}: {pathname}'.format(
             index=idf_index,
             pathname=ifloppy_data['pathname']
         ))
 
 
 def print_attached_hard_disks():
-    print('Attached hard disks:')
+    print_log('Attached hard disks:')
 
     for ihd_no, ihd_data in enumerate(drives):
         if not ihd_data:
             continue
 
-        print('DH{index}: {pathname}'.format(
+        print_log('DH{index}: {pathname}'.format(
             index=ihd_no,
             pathname=ihd_data['pathname']
         ))
@@ -440,10 +558,10 @@ def print_commands():
     if not commands:
         return
 
-    print('Commands:')
+    print_log('Commands:')
 
     for index, icmd in enumerate(commands):
-        print('cmd{index}={cmd}'.format(
+        print_log('cmd{index}={cmd}'.format(
             index=index,
             cmd=icmd
         ))
@@ -457,160 +575,22 @@ def process_changed_drives():
 
     drives_changed = False
 
-    # first of all we must remove all drives
-    # from the emulator, then we will be able to attach
-    # hard drives and directories (as hard drives)
-
-    # put_command('filesys_eject 0')
-
-    # put_command('kill_filesys_unitconfig 0')
-
-
-    # for ihd_no, ihd_data in enumerate(drives):
-    #     # put_command('kill_filesys_unitconfig 0')
-    #     put_command('kill_filesys_unitconfig {drive_index}'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-    # put_command('gui_force_rtarea_hdchange')
-    # put_command('RefreshPanelHD')
-
-    # put_command('kill_filesys_unitconfig2 0')
-    # put_command('kill_filesys_unitconfig2 1')
-    # put_command('kill_filesys_unitconfig2 2')
-    # put_command('kill_filesys_unitconfig2 3')
-    # put_command('kill_filesys_unitconfig2 4')
-    # put_command('kill_filesys_unitconfig2 5')
-
-    # # put_command('set_config_changed')
-    # # put_command('filesys_reset')
-    # put_command('uae_reset 1,1')
-    # # put_command('sleep 3')
-
-
-    #     put_command('kill_filesys_unitconfig {drive_index}'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-    # put_command('uae_reset 0,1')
-
-    #     # put_command('ext_cfgfile_parse_line_hw hardfile2=HD_0')
-    #     # put_command('ext_cfgfile_parse_line_hw filesystem2=HD_0')
-    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=false'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-
-
-    # for ihd_no, ihd_data in enumerate(drives):
-    #     put_command('ext_cfgfile_parse_line_hw hardfile2=,')
-    #     put_command('ext_cfgfile_parse_line_hw filesystem2=,')
-    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=,'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-    # for ihd_no, ihd_data in enumerate(drives):
-    #     put_command('ext_cfgfile_parse_line_hw hardfile2=rw,DH{drive_index}:empty,0,0,0,512,1,,uae1,0'.format(
-    #         drive_index=ihd_no
-    #     ))
-    #     put_command('ext_cfgfile_parse_line_hw filesystem2=rw,DH{drive_index}:empty:empty,0'.format(
-    #         drive_index=ihd_no
-    #     ))
-    #     put_command('ext_cfgfile_parse_line_hw uaehf{drive_index}=empty'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-    # for ihd_no, ihd_data in enumerate(drives):
-    #     put_command('filesys_eject {drive_index}'.format(
-    #         drive_index=ihd_no
-    #     ))
-
-    # put_command('sleep 3')
-
-
-
-
-
-    # drive_index = 0
-
-    # for index, idrive in enumerate(drives):
-    #     if idrive:
-    #         if idrive['is_dir']:
-    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
-
-    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-    #                 config0=drive_config[0]
-    #             ))
-    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-    #                 config1=drive_config[1]
-    #             ))
-
-    #             drive_index += 1
-    #         elif idrive['is_hdf']:
-    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
-
-    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-    #                 config0=drive_config[0]
-    #             ))
-    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-    #                 config1=drive_config[1]
-    #             ))
-
-    #             drive_index += 1
-
-    # put_command('set_config_changed')
-    # put_command('uae_reset 0,0')
-
     generate_config()
-
-    # put_command('uae_reset 1,1')
-
-    put_command('target_cfgfile_load {config_pathname},0,0'.format(
-        config_pathname=CONFIG_PATHNAME
-    ))
-
-    # drive_index = 0
-
-    # for index, idrive in enumerate(drives):
-    #     if idrive:
-    #         if idrive['is_dir']:
-    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
-
-    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-    #                 config0=drive_config[0]
-    #             ))
-    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-    #                 config1=drive_config[1]
-    #             ))
-
-    #             drive_index += 1
-    #         elif idrive['is_hdf']:
-    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
-
-    #             put_command('ext_cfgfile_parse_line_hw {config0}'.format(
-    #                 config0=drive_config[0]
-    #             ))
-    #             put_command('ext_cfgfile_parse_line_hw {config1}'.format(
-    #                 config1=drive_config[1]
-    #             ))
-
-    #             drive_index += 1
-
-    # put_command('sleep 5')
-    # put_command('uae_reset 0,0')
-    put_command('uae_reset 1,1')
+    turn_off_monitor()
+    kill_emulator()
+    keep_monitor_off_to_emulator(5)
 
 
 def send_SIGUSR1_signal():
     if not AUTOSEND_SIGNAL:
         return
 
-    print('Sending SIGUSR1 signal to Amiberry emulator')
+    print_log('Sending SIGUSR1 signal to Amiberry emulator')
 
     try:
         sh.killall('-USR1', 'amiberry')
     except sh.ErrorReturnCode_1:
-        print('No process found')
+        print_log('No process found')
 
 
 def execute_commands():
@@ -629,8 +609,8 @@ def execute_commands():
 
     commands = []
 
-    print(EMULATOR_TMP_INI_PATHNAME + ' contents:')
-    print(contents)
+    print_log(EMULATOR_TMP_INI_PATHNAME + ' contents:')
+    print_log(contents)
 
     with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
         f.write(contents)
@@ -650,14 +630,14 @@ def mount_partitions(partitions: dict) -> list:
             not is_hard_file_label(value['label']):
             continue
 
-        print('Mounting ' + key + ' as ' + value['internal_mountpoint'])
+        print_log('Mounting ' + key + ' as ' + value['internal_mountpoint'])
 
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         force_fsck(key)
         force_all_rw(key)
 
-        sh.mount(key, '-ouser,umask=0000', value['internal_mountpoint'])
+        sh.mount(key, '-ouser,umask=0000,sync', value['internal_mountpoint'])
 
         partitions[key]['mountpoint'] = value['internal_mountpoint']
 
@@ -812,24 +792,24 @@ def force_umount(pathname: str):
     try:
         sh.umount('-l', pathname)
     except (sh.ErrorReturnCode_1, sh.ErrorReturnCode_32) as x:
-        print(str(x))
-        print('Failed to force-umount ' + pathname + ', maybe it is umounted already')
+        print_log(str(x))
+        print_log('Failed to force-umount ' + pathname + ', maybe it is umounted already')
 
 
 def force_fsck(pathname: str):
     try:
         sh.fsck('-y', pathname)
     except (sh.ErrorReturnCode_1, sh.ErrorReturnCode_6) as x:
-        print(str(x))
-        print('Failed to force-fsck ' + pathname)
+        print_log(str(x))
+        print_log('Failed to force-fsck ' + pathname)
 
 
 def force_all_rw(pathname: str):
     try:
         sh.chmod('-R', 'a+rw', pathname)
     except sh.ErrorReturnCode_1 as x1:
-        print(str(x1))
-        print('Failed to chmod a+rw ' + pathname)
+        print_log(str(x1))
+        print_log('Failed to chmod a+rw ' + pathname)
 
 
 def process_new_mounted(partitions: dict, new_mounted: list):
@@ -948,7 +928,7 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
         return False
 
     if not drives[hd_no] or drives[hd_no]['pathname'] != mountpoint:
-        print('Attaching "{mountpoint}" to DH{index}'.format(
+        print_log('Attaching "{mountpoint}" to DH{index}'.format(
             mountpoint=mountpoint,
             index=hd_no
         ))
@@ -965,14 +945,9 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
 
         drives_changed = True
 
-        # put_command('ext_hd_disk_dir_attach DH{index},{mountpoint},1'.format(
-        #     index=hd_no,
-        #     mountpoint=mountpoint
-        # ))
-
         return True
     else:
-        print('DH{index} already attached'.format(
+        print_log('DH{index} already attached'.format(
             index=hd_no
         ))
 
@@ -999,7 +974,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
         return False
 
     if not drives[hd_no] or drives[hd_no]['pathname'] != first_hdf:
-        print('Attaching "{pathname}" to DH{index} (HDF)'.format(
+        print_log('Attaching "{pathname}" to DH{index} (HDF)'.format(
             pathname=first_hdf,
             index=hd_no
         ))
@@ -1016,14 +991,9 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 
         drives_changed = True
 
-        # put_command('ext_hd_disk_file_attach DH{index},{pathname},1'.format(
-        #     index=hd_no,
-        #     pathname=first_hdf
-        # ))
-
         return True
     else:
-        print('DH{index} (HDF) already attached'.format(
+        print_log('DH{index} (HDF) already attached'.format(
             index=hd_no
         ))
 
@@ -1043,7 +1013,7 @@ def process_unmounted(unmounted: list):
                 continue
 
             if ifloppy_data['device'] == idevice:
-                print('Detaching "{pathname}" from DF{index}'.format(
+                print_log('Detaching "{pathname}" from DF{index}'.format(
                     pathname=ifloppy_data['pathname'],
                     index=idf_index
                 ))
@@ -1061,7 +1031,7 @@ def process_unmounted(unmounted: list):
                 continue
 
             if ihd_data['device'] == idevice:
-                print('Detaching "{pathname}" from DH{index}'.format(
+                print_log('Detaching "{pathname}" from DH{index}'.format(
                     pathname=ihd_data['pathname'],
                     index=idh_no
                 ))
@@ -1070,17 +1040,6 @@ def process_unmounted(unmounted: list):
 
                 drives[idh_no] = None
                 drives_changed = True
-
-                # if is_dir:
-                #     put_command('ext_hd_disk_dir_detach {index}'.format(
-                #         index=idh_no
-                #     ))
-                #     put_command('uae_reset 0,0')
-                # else:
-                #     put_command('ext_hd_disk_file_detach {index}'.format(
-                #         index=idh_no
-                #     ))
-                #     put_command('uae_reset 0,0')
 
                 detached.append(idevice)
 
@@ -1118,7 +1077,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
         return False
 
     if not floppies[index] or floppies[index]['pathname'] != first_adf:
-        print('Attaching "{pathname}" to DF{index}'.format(
+        print_log('Attaching "{pathname}" to DF{index}'.format(
             pathname=first_adf,
             index=index
         ))
@@ -1140,7 +1099,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
 
         return True
     else:
-        print('Floppy already attached to DF{index}, eject it first'.format(
+        print_log('Floppy already attached to DF{index}, eject it first'.format(
             index=index
         ))
 
@@ -1148,7 +1107,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
 
 
 def clear_system_cache(force = False):
-    print('Clearing system cache')
+    print_log('Clearing system cache')
 
     os.system('sync')
     os.system('echo 1 > /proc/sys/vm/drop_caches')
@@ -1204,6 +1163,9 @@ def get_medium_label(medium_data):
 
 
 def is_emulator_running():
+    if not AUTORUN_EMULATOR:
+        return None
+
     for iprocess in psutil.process_iter(attrs=['exe']):
         if iprocess.info['exe'] == EMULATOR_EXE_PATHNAME:
             return True
@@ -1293,6 +1255,12 @@ def generate_config(with_hard_drives = True):
 
     config_data_copy['hard_drives'] = hard_drives
 
+    if ENABLE_F12_GUI:
+        config_data_copy['amiberry__open_gui'] = ''
+    
+    if ENABLE_MOUSE_UNGRAB:
+        config_data_copy['magic_mouse'] = '1'
+
     # fill config
     config_copy = config_copy.format_map(config_data_copy)
 
@@ -1303,51 +1271,9 @@ def generate_config(with_hard_drives = True):
 def run_emulator():
     global floppies
 
-    print('Running emulator')
+    print_log('Running emulator')
 
     generate_config()
-
-    # # assign floppies via command line
-    # str_floppies = ''
-    # str_drives = ''
-    # drive_index = 0
-
-    # for index, ifloppy in enumerate(floppies):
-    #     if ifloppy:
-    #         str_floppies += r' -{index} "{pathname}"'.format(
-    #             index=index,
-    #             pathname=ifloppy['pathname']
-    #         )
-
-    # for index, idrive in enumerate(drives):
-    #     if idrive:
-    #         if idrive['is_dir']:
-    #             drive_config = get_dir_drive_config_command_line(drive_index, idrive)
-
-    #             str_drives += ' -s {config0} -s {config1} '.format(
-    #                 config0=drive_config[0],
-    #                 config1=drive_config[1]
-    #             )
-
-    #             drive_index += 1
-    #         elif idrive['is_hdf']:
-    #             drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
-
-    #             str_drives += ' -s {config0} -s {config1} '.format(
-    #                 config0=drive_config[0],
-    #                 config1=drive_config[1]
-    #             )
-
-    #             drive_index += 1
-
-    # pattern = EMULATOR_RUN_PATTERN.format(
-    #     executable=EMULATOR_EXE_PATHNAME,
-    #     floppies=str_floppies.strip(),
-    #     drives=str_drives.strip(),
-    #     cdimage=''
-    # )
-
-    # EMULATOR_RUN_PATTERN = '{executable} -m {MODEL} -G --config {config_pathname} -r {KICKSTART_PATHNAME}'
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=EMULATOR_EXE_PATHNAME,
@@ -1356,7 +1282,7 @@ def run_emulator():
         KICKSTART_PATHNAME=KICKSTART_PATHNAME
     )
 
-    print('Emulator command line: ' + pattern)
+    print_log('Emulator command line: ' + pattern)
 
     subprocess.Popen(pattern, cwd=os.path.dirname(EMULATOR_EXE_PATHNAME), shell=True)
 
@@ -1364,12 +1290,12 @@ def run_emulator():
 
 
 def kill_emulator():
-    print('Sending SIGKILL signal to Amiberry emulator')
+    print_log('Sending SIGKILL signal to Amiberry emulator')
 
     try:
         sh.killall('-9', 'amiberry')
     except sh.ErrorReturnCode_1:
-        print('No process found')
+        print_log('No process found')
 
 
 def on_key_press(key):
@@ -1417,6 +1343,7 @@ def on_key_release(key):
         ctrl_alt_del_press_ts = 0
 
 
+init_logger()
 check_pre_requirements()
 configure_system()
 
@@ -1437,7 +1364,7 @@ while True:
     unmounted = unmount_partitions(partitions, old_partitions)
 
     if unmounted:
-        print('Unmounted partitions')
+        print_log('Unmounted partitions')
 
         new_detached = process_unmounted(unmounted)
 
@@ -1445,7 +1372,7 @@ while True:
     new_mounted = mount_partitions(partitions)
 
     if new_mounted:
-        print('Mounted new partitions')
+        print_log('Mounted new partitions')
 
         new_attached = process_new_mounted(partitions, new_mounted)
 
@@ -1468,14 +1395,11 @@ while True:
         execute_commands()
         clear_system_cache()
 
-    if AUTORUN_EMULATOR:
-        if not is_emulator_running():
-            run_emulator()
+    if is_emulator_running() == False:
+        run_emulator()
 
-    if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
-        ctrl_alt_del_press_ts = 0
+    keyboard_actions()
+    update_monitor_state()
+    other_actions()
 
-        kill_emulator()
-
-    os.system('sync')
     time.sleep(1)
