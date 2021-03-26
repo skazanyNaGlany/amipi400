@@ -517,8 +517,12 @@ def find_similar_file(directory, pattern):
 
     for iadf in adfs:
         basename = os.path.basename(iadf)
+        basename_unified = string_unify2(basename)
 
-        parts = string_unify2(basename).split(' ')
+        if pattern in basename_unified:
+            return iadf
+
+        parts = basename_unified.split(' ')
         pattern_copy = copy.copy(pattern)
 
         for ipart in parts:
