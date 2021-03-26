@@ -547,6 +547,9 @@ def process_floppy_replace_action(action: str):
 
     action_data = action[3:].strip()
 
+    if not action_data:
+        return
+
     pathname = find_similar_file(
         floppies[idf_index]['mountpoint'],
         action_data
