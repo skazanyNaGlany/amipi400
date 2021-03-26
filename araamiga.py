@@ -18,6 +18,7 @@ try:
     import subprocess
     import copy
     import logzero
+    import string
 
     from pprint import pprint
     from collections import OrderedDict
@@ -320,6 +321,8 @@ key_ctrl_pressed = False
 key_alt_pressed = False
 key_delete_pressed = False
 ctrl_alt_del_press_ts = 0
+tab_combo = []
+tab_combo_recording = False
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -452,13 +455,148 @@ def update_monitor_state():
         keep_monitor_off(monitor_off_seconds)
 
 
-def keyboard_actions():
+def ctrl_alt_del_keyboard_action():
+    global key_ctrl_pressed
+    global key_alt_pressed
+    global key_delete_pressed
     global ctrl_alt_del_press_ts
+
+    if key_ctrl_pressed and key_alt_pressed and key_delete_pressed:
+        key_ctrl_pressed = False
+        key_alt_pressed = False
+        key_delete_pressed = False
+
+        ctrl_alt_del_press_ts = int(time.time())
+
+        put_command('uae_reset 0,0')
+        clear_system_cache()
+    elif not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
+        ctrl_alt_del_press_ts = 0
 
     if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
         ctrl_alt_del_press_ts = 0
 
         kill_emulator()
+
+
+def string_unify2(str_to_unify: str, exclude = None) -> str:
+    """
+    better version of string_unify(), using spaces to separate string parts
+    """
+    if not exclude:
+        exclude = []
+
+    unified = ''
+
+    for ichar in str_to_unify:
+        if ichar in exclude:
+            unified += ichar
+            continue
+
+        ichar = ichar.lower()
+
+        if ichar.isalnum():
+            unified += ichar
+        else:
+            unified += ' '
+
+    unified = unified.strip()
+    spaces_pos = unified.find('  ')
+    while spaces_pos != -1:
+        unified = unified.replace('  ', ' ')
+        spaces_pos = unified.find('  ')
+
+    return unified.strip()
+
+
+def find_similar_file(directory, pattern):
+    adfs = mountpoint_find_files(directory, '*.adf')
+
+    if not adfs:
+        return None
+
+    for iadf in adfs:
+        basename = os.path.basename(iadf)
+
+        parts = string_unify2(basename).split(' ')
+        pattern_copy = copy.copy(pattern)
+
+        for ipart in parts:
+            if pattern_copy.find(ipart) == 0:
+                pattern_copy = pattern_copy.replace(ipart, '')
+
+                if not pattern_copy:
+                    return iadf
+
+    return None
+
+
+def process_floppy_replace_action(action: str):
+    idf_index = int(action[2])
+
+    if idf_index + 1 > MAX_FLOPPIES:
+        return
+
+    put_command('ext_disk_eject {index}'.format(
+        index=idf_index
+    ))
+
+    action_data = action[3:].strip()
+
+    pathname = find_similar_file(
+        floppies[idf_index]['mountpoint'],
+        action_data
+    )
+
+    if not pathname:
+        return
+
+    device = floppies[idf_index]['device']
+    medium = floppies[idf_index]['medium']
+
+    floppies[idf_index] = None
+
+    attach_mountpoint_floppy(device, medium, pathname)
+
+
+def process_tab_combo_action(action: str):
+    if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
+        process_floppy_replace_action(action)
+
+
+def action_to_str(action: list) -> str:
+    action_str = ''
+
+    for c in action:
+        try:
+            action_str += c.char
+        except:
+            pass
+
+    return action_str
+
+
+def tab_combo_actions():
+    global tab_combo
+
+    if len(tab_combo) <= 4:
+        return
+
+    if tab_combo[-1] != Key.tab or tab_combo[-2] != Key.tab:
+        return
+    
+    if tab_combo[0] != Key.tab or tab_combo[1] != Key.tab:
+        return
+
+    action_str = action_to_str(tab_combo)
+    tab_combo = []
+
+    process_tab_combo_action(action_str)
+
+
+def keyboard_actions():
+    ctrl_alt_del_keyboard_action()
+    tab_combo_actions()
 
 
 def other_actions():
@@ -576,9 +714,11 @@ def process_changed_drives():
     drives_changed = False
 
     generate_config()
-    turn_off_monitor()
-    kill_emulator()
-    keep_monitor_off_to_emulator(5)
+
+    if AUTORUN_EMULATOR:
+        turn_off_monitor()
+        kill_emulator()
+        keep_monitor_off_to_emulator(5)
 
 
 def send_SIGUSR1_signal():
@@ -1060,7 +1200,7 @@ def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
     return sorted(files)
 
 
-def attach_mountpoint_floppy(ipart_dev, ipart_data):
+def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     mountpoint = ipart_data['mountpoint']
 
     force_all_rw(mountpoint)
@@ -1070,31 +1210,36 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data):
     if not adfs:
         return False
 
-    first_adf = adfs[0]
+    if force_file_pathname and force_file_pathname in adfs:
+        iadf = force_file_pathname
+    else:
+        iadf = adfs[0]
+
     index = get_label_floppy_index(ipart_data['label'])
 
     if index >= MAX_FLOPPIES:
         return False
 
-    if not floppies[index] or floppies[index]['pathname'] != first_adf:
+    if not floppies[index] or floppies[index]['pathname'] != iadf:
         print_log('Attaching "{pathname}" to DF{index}'.format(
-            pathname=first_adf,
+            pathname=iadf,
             index=index
         ))
 
         floppies[index] = {
-            'pathname': first_adf,
+            'pathname': iadf,
             'mountpoint': mountpoint,
             'device': ipart_dev,
-            'file_size': os.path.getsize(first_adf),
+            'file_size': os.path.getsize(iadf),
             'last_access_ts': 0,
             'last_cached_size': 0,
-            'config': ipart_data['config']
+            'config': ipart_data['config'],
+            'medium': ipart_data
         }
 
         put_command('ext_disk_insert_force {df_no},{pathname},0'.format(
             df_no=index,
-            pathname=first_adf
+            pathname=iadf
         ))
 
         return True
@@ -1303,6 +1448,8 @@ def on_key_press(key):
     global key_alt_pressed
     global key_delete_pressed
     global ctrl_alt_del_press_ts
+    global tab_combo
+    global tab_combo_recording
 
     if key == Key.ctrl:
         key_ctrl_pressed = True
@@ -1313,15 +1460,10 @@ def on_key_press(key):
     if key == Key.delete:
         key_delete_pressed = True
 
-    if key_ctrl_pressed and key_alt_pressed and key_delete_pressed:
-        key_ctrl_pressed = False
-        key_alt_pressed = False
-        key_delete_pressed = False
-
-        ctrl_alt_del_press_ts = int(time.time())
-
-        put_command('uae_reset 0,0')
-        clear_system_cache()
+    if key == Key.esc:
+        tab_combo = []
+    else:
+        tab_combo.append(key)
 
 
 def on_key_release(key):
@@ -1338,9 +1480,6 @@ def on_key_release(key):
 
     if key == Key.delete:
         key_delete_pressed = False
-
-    if not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
-        ctrl_alt_del_press_ts = 0
 
 
 init_logger()
