@@ -519,7 +519,7 @@ def string_unify2(str_to_unify: str, exclude = None) -> str:
     return unified.strip()
 
 
-def find_similar_file(directory, pattern):
+def find_similar_file_adf(directory, pattern):
     adfs = mountpoint_find_files(directory, '*.adf')
 
     if not adfs:
@@ -546,7 +546,7 @@ def find_similar_file(directory, pattern):
 
 
 def replace_floppy(floppy_index: int, floppy_pattern_name: str):
-    pathname = find_similar_file(
+    pathname = find_similar_file_adf(
         floppies[floppy_index]['mountpoint'],
         floppy_pattern_name
     )
@@ -579,7 +579,7 @@ def replace_floppy_by_mountpoint(partitions: dict, floppy_index: int, floppy_pat
     if not medium:
         return
 
-    pathname = find_similar_file(
+    pathname = find_similar_file_adf(
         medium['mountpoint'],
         floppy_pattern_name
     )
