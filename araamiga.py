@@ -19,6 +19,7 @@ try:
     import copy
     import logzero
     import string
+    import glob
 
     from pprint import pprint
     from collections import OrderedDict
@@ -38,11 +39,12 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 ENABLE_LOGGER = False
 ENABLE_MOUSE_UNGRAB = False
 ENABLE_F12_GUI = True
-ENABLE_TURN_OFF_MONITOR = True
+ENABLE_TURN_OFF_MONITOR = False
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
 MAX_DRIVES = 6
+RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
 MODEL = 'A1200'
 KICKSTART_PATHNAME = 'kickstarts/Kickstart3.1.rom'
 EMULATOR_RUN_PATTERN = '{executable} -m {MODEL} -G --config {config_pathname} -r {KICKSTART_PATHNAME}'
@@ -613,8 +615,88 @@ def process_floppy_replace_action(partitions: dict, action: str):
         replace_floppy_by_mountpoint(partitions, idf_index, action_data)
 
 
+
+def find_similar_roms(rom_path: str) -> list:
+    dirname = os.path.dirname(rom_path)
+    basename = os.path.basename(rom_path)
+
+    (filename, extension) = os.path.splitext(basename)
+
+    match = RE_SIMILAR_ROM.findall(basename)
+    len_match = len(match)
+
+    if len_match != 1:
+        return [rom_path]
+
+    (no_disc_filename, count) = RE_SIMILAR_ROM.subn('', basename, 1)
+    (clean_filename, extension) = os.path.splitext(no_disc_filename)
+
+    files = glob.glob(os.path.join(dirname, '*' + extension))
+    similar = []
+
+    for ifile in files:
+        ifile_basename = os.path.basename(ifile)
+
+        if ifile_basename.startswith(clean_filename) and len(RE_SIMILAR_ROM.findall(ifile_basename)) == 1 and ifile_basename.endswith(extension):
+            if ifile not in similar:
+                similar.append(ifile)
+
+    return sorted(similar)
+
+
+def process_floppy_replace_by_index_action(partitions: dict, action: str):
+    idf_index = int(action[2])
+
+    if idf_index + 1 > MAX_FLOPPIES:
+        return
+
+    if not floppies[idf_index]:
+        return
+
+    action_data = action[3:].strip()
+
+    if not action_data:
+        return
+
+    rom_disk_no = int(action_data)
+    similar_roms = find_similar_roms(floppies[idf_index]['pathname'])
+    len_similar_roms = len(similar_roms)
+    to_insert_pathname = None
+
+    for value in similar_roms:
+        rom_sign = '(Disk {index} of {max_index})'.format(
+            index=rom_disk_no,
+            max_index=len_similar_roms
+        )
+
+        if rom_sign in value:
+            to_insert_pathname = value
+
+    if to_insert_pathname:
+        if floppies[idf_index]['pathname'] == to_insert_pathname:
+            return
+
+        device = floppies[idf_index]['device']
+        medium = floppies[idf_index]['medium']
+
+        put_command('ext_disk_eject {index}'.format(
+            index=idf_index
+        ))
+
+        floppies[idf_index] = None
+
+        attach_mountpoint_floppy(device, medium, to_insert_pathname)
+
+
 def process_tab_combo_action(partitions: dict, action: str):
+    len_action = len(action)
+
     if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
+        if len_action >= 4 and len_action <= 5:
+            process_floppy_replace_by_index_action(partitions, action)
+
+            return
+
         process_floppy_replace_action(partitions, action)
 
 
@@ -638,7 +720,7 @@ def tab_combo_actions(partitions: dict):
 
     if tab_combo[-1] != Key.tab or tab_combo[-2] != Key.tab:
         return
-    
+
     if tab_combo[0] != Key.tab or tab_combo[1] != Key.tab:
         return
 
