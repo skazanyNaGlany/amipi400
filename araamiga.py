@@ -545,7 +545,54 @@ def find_similar_file(directory, pattern):
     return None
 
 
-def process_floppy_replace_action(action: str):
+def replace_floppy(floppy_index: int, floppy_pattern_name: str):
+    pathname = find_similar_file(
+        floppies[floppy_index]['mountpoint'],
+        floppy_pattern_name
+    )
+
+    if not pathname:
+        return
+
+    device = floppies[floppy_index]['device']
+    medium = floppies[floppy_index]['medium']
+
+    floppies[floppy_index] = None
+
+    attach_mountpoint_floppy(device, medium, pathname)
+
+
+def find_floppy_first_mountpoint(partitions: dict, floppy_index: int) -> dict:
+    for key, value in partitions.items():
+        if not is_floppy_label(value['label']):
+            continue
+
+        if get_label_floppy_index(value['label']) == floppy_index:
+            return value
+
+    return None
+ 
+
+def replace_floppy_by_mountpoint(partitions: dict, floppy_index: int, floppy_pattern_name: str):
+    medium = find_floppy_first_mountpoint(partitions, floppy_index)
+
+    if not medium:
+        return
+
+    pathname = find_similar_file(
+        medium['mountpoint'],
+        floppy_pattern_name
+    )
+
+    if not pathname:
+        return
+
+    floppies[floppy_index] = None
+
+    attach_mountpoint_floppy(medium['device'], medium, pathname)
+
+
+def process_floppy_replace_action(partitions: dict, action: str):
     idf_index = int(action[2])
 
     if idf_index + 1 > MAX_FLOPPIES:
@@ -560,25 +607,15 @@ def process_floppy_replace_action(action: str):
     if not action_data:
         return
 
-    pathname = find_similar_file(
-        floppies[idf_index]['mountpoint'],
-        action_data
-    )
-
-    if not pathname:
-        return
-
-    device = floppies[idf_index]['device']
-    medium = floppies[idf_index]['medium']
-
-    floppies[idf_index] = None
-
-    attach_mountpoint_floppy(device, medium, pathname)
+    if floppies[idf_index]:
+        replace_floppy(idf_index, action_data)
+    else:
+        replace_floppy_by_mountpoint(partitions, idf_index, action_data)
 
 
-def process_tab_combo_action(action: str):
+def process_tab_combo_action(partitions: dict, action: str):
     if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
-        process_floppy_replace_action(action)
+        process_floppy_replace_action(partitions, action)
 
 
 def action_to_str(action: list) -> str:
@@ -593,7 +630,7 @@ def action_to_str(action: list) -> str:
     return action_str
 
 
-def tab_combo_actions():
+def tab_combo_actions(partitions: dict):
     global tab_combo
 
     if len(tab_combo) <= 4:
@@ -608,12 +645,12 @@ def tab_combo_actions():
     action_str = action_to_str(tab_combo)
     tab_combo = []
 
-    process_tab_combo_action(action_str)
+    process_tab_combo_action(partitions, action_str)
 
 
-def keyboard_actions():
+def keyboard_actions(partitions: dict):
     ctrl_alt_del_keyboard_action()
-    tab_combo_actions()
+    tab_combo_actions(partitions)
 
 
 def other_actions():
@@ -652,7 +689,8 @@ def get_partitions2() -> OrderedDict:
                 get_relative_path(full_path)
             ),
             'label': found[4],
-            'config': get_mountpoint_config(found[3])
+            'config': get_mountpoint_config(found[3]),
+            'device': full_path
         }
 
         ret[full_path] = device_data
@@ -1230,6 +1268,9 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     if force_file_pathname and force_file_pathname in adfs:
         iadf = force_file_pathname
     else:
+        if not is_medium_floppy_auto_insert(ipart_data):
+            return False
+
         iadf = adfs[0]
 
     index = get_label_floppy_index(ipart_data['label'])
@@ -1311,7 +1352,7 @@ def get_mountpoint_config(mountpoint: str):
     return config
 
 
-def get_medium_label(medium_data):
+def get_medium_partition_label(medium_data):
     if not medium_data['config']:
         return None
 
@@ -1322,6 +1363,20 @@ def get_medium_label(medium_data):
         return None
 
     return medium_data['config']['partition']['label']
+
+
+def is_medium_floppy_auto_insert(medium_data):
+    if not medium_data['config']:
+        return True
+
+    if 'floppy' not in medium_data['config']:
+        return True
+
+    if 'auto_insert' not in medium_data['config']['floppy']:
+        return True
+
+    return medium_data['config']['floppy'].getboolean('auto_insert')
+    # return medium_data['config']['floppy']['auto_insert'] != 'false'
 
 
 def is_emulator_running():
@@ -1338,7 +1393,7 @@ def is_emulator_running():
 def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
     config = []
 
-    label = get_medium_label(drive_data)
+    label = get_medium_partition_label(drive_data)
     boot_priority = get_label_hard_disk_boot_priority(drive_data['label'])
 
     if not label:
@@ -1557,7 +1612,7 @@ while True:
     if is_emulator_running() == False:
         run_emulator()
 
-    keyboard_actions()
+    keyboard_actions(partitions)
     update_monitor_state()
     other_actions()
 
