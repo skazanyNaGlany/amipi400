@@ -38,6 +38,7 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 ENABLE_LOGGER = False
 ENABLE_MOUSE_UNGRAB = False
 ENABLE_F12_GUI = True
+ENABLE_TURN_OFF_MONITOR = True
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
@@ -402,6 +403,9 @@ monitor_off_seconds = 0
 
 
 def turn_off_monitor():
+    if not ENABLE_TURN_OFF_MONITOR:
+        return
+
     os.system('xset dpms force off')
 
 
@@ -413,6 +417,9 @@ def keep_monitor_off(seconds: int):
     global monitor_off_timestamp
     global monitor_state
     global monitor_off_seconds
+    
+    if not ENABLE_TURN_OFF_MONITOR:
+        return
 
     if monitor_state == MONITOR_STATE_KEEP_OFF:
         return
@@ -426,6 +433,9 @@ def keep_monitor_off_to_emulator(additional_seconds: int):
     global monitor_off_timestamp
     global monitor_state
     global monitor_off_seconds
+
+    if not ENABLE_TURN_OFF_MONITOR:
+        return
 
     if monitor_state == MONITOR_STATE_KEEP_OFF_TO_EMULATOR:
         return
@@ -1471,6 +1481,9 @@ def on_key_press(key):
         tab_combo = []
     else:
         tab_combo.append(key)
+
+    if len(tab_combo) >= 255:
+        tab_combo = []
 
 
 def on_key_release(key):
