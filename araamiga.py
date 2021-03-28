@@ -48,7 +48,10 @@ MAX_DRIVES = 6
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
 MODEL = 'A1200'
 KICKSTART_PATHNAME = 'kickstarts/Kickstart3.1.rom'
-EMULATOR_RUN_PATTERN = '{executable} -m {MODEL} -G --config {config_pathname} -r {KICKSTART_PATHNAME}'
+# stock
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s joyport1=none -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
+# fastest
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s chipmem_size=16 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s joyport1=none -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
@@ -59,263 +62,6 @@ MONITOR_STATE_KEEP_OFF_TO_EMULATOR = 2
 HDF_TYPE_HDFRDB = 8
 HDF_TYPE_DISKIMAGE = 2
 HDF_TYPE_HDF  = 5
-CUSTOM_CONFIG = {
-    'cpu_type': '68ec020',
-    'cpu_model': '68020',
-    'cpu_multiplier': '2',
-    'amiberry__gfx_correct_aspect': '0',
-    'gfx_width': '720',
-    'gfx_width_windowed': '720',
-    'gfx_height': '568',
-    'gfx_height_windowed': '568',
-    # 'gfx_fullscreen_amiga': 'false',
-    # 'gfx_fullscreen_picasso': 'false',
-    'gfx_fullscreen_amiga': 'fullwindow',
-    'gfx_fullscreen_picasso': 'fullwindow',
-    'joyport1': 'none',
-    'chipset': 'aga',
-    'finegrain_cpu_speed': '1024',
-    'bsdsocket_emu': 'true',
-    'chipmem_size': '16',
-    'show_leds': 'false',
-    'amiberry__open_gui': 'none',
-    'magic_mouse': 'none',
-    'hard_drives': ''
-}
-CONFIG = """
-config_description=UAE default configuration
-config_hardware=true
-config_host=true
-config_version=4.4.0
-config_hardware_path=
-config_host_path=
-config_all_path=
-amiberry.rom_path=./
-amiberry.floppy_path=./
-amiberry.hardfile_path=./
-amiberry.cd_path=./
-; 
-; *** Controller/Input Configuration
-; 
-joyport0=mouse
-joyport0_autofire=none
-joyport0_friendlyname=Mouse
-joyport0_name=MOUSE0
-; 
-joyport1={joyport1}
-joyport1_autofire=none
-joyport1_friendlyname=ShanWan PS3/PC Adaptor
-joyport1_name=JOY1
-; 
-; 
-; 
-input.joymouse_speed_analog=2
-input.joymouse_speed_digital=10
-input.joymouse_deadzone=33
-input.joystick_deadzone=33
-input.analog_joystick_multiplier=18
-input.analog_joystick_offset=-5
-input.mouse_speed=100
-input.autofire_speed=600
-input.autoswitch=1
-kbd_lang=us
-; 
-; *** Host-Specific
-; 
-amiberry.gfx_auto_height=false
-amiberry.gfx_correct_aspect={amiberry__gfx_correct_aspect}
-amiberry.kbd_led_num=-1
-amiberry.kbd_led_scr=-1
-amiberry.scaling_method=-1
-amiberry.allow_host_run=false
-amiberry.use_analogue_remap=false
-amiberry.use_retroarch_quit=true
-amiberry.use_retroarch_menu=true
-amiberry.use_retroarch_reset=false
-amiberry.active_priority=1
-amiberry.inactive_priority=0
-amiberry.minimized_priority=0
-amiberry.minimized_input=0
-; 
-; *** Common / Paths
-; 
-show_leds={show_leds}
-use_gui=no
-kickstart_rom_file=/home/pi/projects.local/amiberry/kickstarts/kick40068.A1200
-kickstart_rom_file_id=1483A091,KS ROM v3.1 (A1200)
-kickstart_ext_rom_file=
-pcmcia_mb_rom_file=:ENABLED
-ide_mb_rom_file=:ENABLED
-flash_file=
-cart_file=
-rtc_file=
-kickshifter=false
-; 
-; *** Floppy Drives
-; 
-floppy_volume=33
-floppy0={floppy0}
-floppy1={floppy1}
-floppy1type=-1
-floppy2={floppy2}
-floppy3={floppy3}
-nr_floppies=1
-floppy_speed=100
-; 
-; *** Hard Drives
-; 
-{hard_drives}
-scsi=false
-; 
-; *** CD / CD32
-; 
-cd_speed=100
-; 
-; *** Display / Screen Setup
-; 
-gfx_framerate=1
-gfx_width={gfx_width}
-gfx_height={gfx_height}
-gfx_top_windowed=0
-gfx_left_windowed=0
-gfx_width_windowed={gfx_width_windowed}
-gfx_height_windowed={gfx_height_windowed}
-gfx_width_fullscreen=800
-gfx_height_fullscreen=600
-gfx_refreshrate=50
-gfx_refreshrate_rtg=50
-gfx_backbuffers=2
-gfx_backbuffers_rtg=1
-gfx_vsync=false
-gfx_vsyncmode=normal
-gfx_vsync_picasso=false
-gfx_vsyncmode_picasso=normal
-gfx_lores=false
-gfx_resolution=hires
-gfx_lores_mode=normal
-gfx_flickerfixer=false
-gfx_linemode=none
-gfx_fullscreen_amiga={gfx_fullscreen_amiga}
-gfx_fullscreen_picasso={gfx_fullscreen_picasso}
-gfx_center_horizontal=none
-gfx_center_vertical=none
-gfx_colour_mode=32bit
-gfx_blacker_than_black=false
-gfx_api=directdraw
-gfx_api_options=hardware
-; 
-; *** CPU options
-; 
-finegrain_cpu_speed={finegrain_cpu_speed}
-cpu_throttle=0.0
-cpu_type={cpu_type}
-cpu_model={cpu_model}
-; cpu_multiplier not exists in default config
-cpu_multiplier={cpu_multiplier}
-cpu_compatible=true
-cpu_24bit_addressing=true
-cpu_data_cache=false
-cpu_cycle_exact=false
-cpu_memory_cycle_exact=true
-blitter_cycle_exact=false
-cycle_exact=false
-fpu_strict=false
-comp_trustbyte=direct
-comp_trustword=direct
-comp_trustlong=direct
-comp_trustnaddr=direct
-comp_nf=true
-comp_constjump=true
-comp_flushmode=soft
-compfpu=false
-comp_catchfault=true
-cachesize=0
-; 
-; *** Memory
-; 
-z3mapping=real
-fastmem_size=0
-a3000mem_size=0
-mbresmem_size=0
-z3mem_size=0
-z3mem_start=0x40000000
-bogomem_size=0
-gfxcard_hardware_vblank=false
-gfxcard_hardware_sprite=false
-gfxcard_multithread=false
-chipmem_size={chipmem_size}
-rtg_modes=0x112
-; 
-; *** Chipset
-; 
-immediate_blits=false
-fast_copper=false
-ntsc=false
-chipset={chipset}
-chipset_refreshrate=49.920410
-collision_level=playfields
-chipset_compatible=A1200
-rtc=none
-ksmirror_a8=true
-pcmcia=true
-ide=a600/a1200
-; 
-; *** Sound Options
-; 
-sound_output=exact
-sound_channels=stereo
-sound_stereo_separation=7
-sound_stereo_mixing_delay=0
-sound_max_buff=16384
-sound_frequency=44100
-sound_interpol=anti
-sound_filter=emulated
-sound_filter_type=standard
-sound_volume=0
-sound_volume_paula=0
-sound_volume_cd=20
-sound_volume_ahi=0
-sound_volume_midi=0
-sound_volume_genlock=0
-sound_auto=true
-sound_cdaudio=false
-sound_stereo_swap_paula=false
-sound_stereo_swap_ahi=false
-; 
-; *** Misc. Options
-; 
-parallel_on_demand=false
-serial_on_demand=false
-serial_hardware_ctsrts=true
-serial_direct=false
-uaeserial=false
-sana2=false
-bsdsocket_emu={bsdsocket_emu}
-synchronize_clock=false
-maprom=0x0
-parallel_postscript_emulation=false
-parallel_postscript_detection=false
-ghostscript_parameters=
-parallel_autoflush=5
-; 
-; *** WHDLoad Booter. Options
-; 
-whdload_slave=
-whdload_showsplash=false
-whdload_buttonwait=false
-whdload_custom1=0
-whdload_custom2=0
-whdload_custom3=0
-whdload_custom4=0
-whdload_custom5=0
-whdload_custom=
-
-; 
-; *** ARA custom options
-; 
-amiberry.open_gui={amiberry__open_gui}
-magic_mouse={magic_mouse}
-"""
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -853,8 +599,6 @@ def process_changed_drives():
         return
 
     drives_changed = False
-
-    generate_config()
 
     if AUTORUN_EMULATOR:
         turn_off_monitor()
@@ -1566,55 +1310,98 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
     return config
 
 
-def generate_config(with_hard_drives = True):
-    # make config copy from default config
-    config_copy = copy.deepcopy(CONFIG)
-    config_data_copy = CUSTOM_CONFIG.copy()
+# def generate_config(with_hard_drives = True):
+#     # make config copy from default config
+#     config_copy = copy.deepcopy(CONFIG)
+#     config_data_copy = CUSTOM_CONFIG.copy()
 
+#     # floppies
+#     for index, ifloppy in enumerate(floppies):
+#         index_str = str(index)
+
+#         config_data_copy['floppy' + index_str] = ''
+
+#         if ifloppy:
+#             config_data_copy['floppy' + index_str] = ifloppy['pathname']
+
+#     # hard drives
+#     drive_index = 0
+#     hard_drives = ''
+
+#     if with_hard_drives:
+#         for index, idrive in enumerate(drives):
+#             if idrive:
+#                 if idrive['is_dir']:
+#                     drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+
+#                     hard_drives += drive_config[0] + '\n'
+#                     hard_drives += drive_config[1] + '\n'
+
+#                     drive_index += 1
+#                 elif idrive['is_hdf']:
+#                     drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+
+#                     hard_drives += drive_config[0] + '\n'
+#                     hard_drives += drive_config[1] + '\n'
+
+#                     drive_index += 1
+
+#     config_data_copy['hard_drives'] = hard_drives
+
+#     if ENABLE_F12_GUI:
+#         config_data_copy['amiberry__open_gui'] = ''
+    
+#     if ENABLE_MOUSE_UNGRAB:
+#         config_data_copy['magic_mouse'] = '1'
+
+#     # fill config
+#     config_copy = config_copy.format_map(config_data_copy)
+
+#     with open(CONFIG_PATHNAME, 'w+', newline=None) as f:
+#         f.write(config_copy)
+
+
+
+def get_media_command_line_config():
     # floppies
+    str_floppies = ''
+
     for index, ifloppy in enumerate(floppies):
-        index_str = str(index)
-
-        config_data_copy['floppy' + index_str] = ''
-
         if ifloppy:
-            config_data_copy['floppy' + index_str] = ifloppy['pathname']
+            str_floppies += ' -{index} "{pathname}" '.format(
+                index=index,
+                pathname=ifloppy['pathname']
+            )
 
     # hard drives
     drive_index = 0
-    hard_drives = ''
+    str_drives = ''
 
-    if with_hard_drives:
-        for index, idrive in enumerate(drives):
-            if idrive:
-                if idrive['is_dir']:
-                    drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+    for index, idrive in enumerate(drives):
+        if idrive:
+            if idrive['is_dir']:
+                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
 
-                    hard_drives += drive_config[0] + '\n'
-                    hard_drives += drive_config[1] + '\n'
+                str_drives += ' -s {config0} -s {config1} '.format(
+                    config0=drive_config[0],
+                    config1=drive_config[1]
+                )
 
-                    drive_index += 1
-                elif idrive['is_hdf']:
-                    drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+                drive_index += 1
+            elif idrive['is_hdf']:
+                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
 
-                    hard_drives += drive_config[0] + '\n'
-                    hard_drives += drive_config[1] + '\n'
+                str_drives += ' -s {config0} -s {config1} '.format(
+                    config0=drive_config[0],
+                    config1=drive_config[1]
+                )
 
-                    drive_index += 1
+                drive_index += 1
 
-    config_data_copy['hard_drives'] = hard_drives
-
-    if ENABLE_F12_GUI:
-        config_data_copy['amiberry__open_gui'] = ''
-    
-    if ENABLE_MOUSE_UNGRAB:
-        config_data_copy['magic_mouse'] = '1'
-
-    # fill config
-    config_copy = config_copy.format_map(config_data_copy)
-
-    with open(CONFIG_PATHNAME, 'w+', newline=None) as f:
-        f.write(config_copy)
+    return {
+        'floppies': str_floppies,
+        'drives': str_drives
+    }
 
 
 def run_emulator():
@@ -1622,13 +1409,14 @@ def run_emulator():
 
     print_log('Running emulator')
 
-    generate_config()
+    media_config = get_media_command_line_config()
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=EMULATOR_EXE_PATHNAME,
-        MODEL=MODEL,
         config_pathname=CONFIG_PATHNAME,
-        KICKSTART_PATHNAME=KICKSTART_PATHNAME
+        kickstart=KICKSTART_PATHNAME,
+        floppies=media_config['floppies'],
+        drives=media_config['drives']
     )
 
     print_log('Emulator command line: ' + pattern)
