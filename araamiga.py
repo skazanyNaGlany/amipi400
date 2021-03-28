@@ -27,6 +27,7 @@ try:
     from io import StringIO
     from pynput.keyboard import Key, Listener
     from configparser import ConfigParser
+    from array import array
 except ImportError as xie:
     print_log(xie)
     sys.exit(1)
@@ -55,6 +56,9 @@ AUTOSEND_SIGNAL = True
 MONITOR_STATE_ON = 1
 MONITOR_STATE_KEEP_OFF = 0
 MONITOR_STATE_KEEP_OFF_TO_EMULATOR = 2
+HDF_TYPE_HDFRDB = 8
+HDF_TYPE_DISKIMAGE = 2
+HDF_TYPE_HDF  = 5
 CUSTOM_CONFIG = {
     'cpu_type': '68ec020',
     'cpu_model': '68020',
@@ -1497,20 +1501,66 @@ def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
     return config
 
 
+def get_hdf_type(pathname: str) -> int:
+    file_stat = os.stat(pathname)
+
+    with open(pathname, 'rb') as file:
+        data = array('B', file.read(512))
+
+        char_0 = chr(data[0])
+        char_1 = chr(data[1])
+        char_2 = chr(data[2])
+        char_3 = chr(data[3])
+
+        first_4_chars = ''.join([char_0, char_1, char_2, char_3])
+
+        if first_4_chars == 'RDSK':
+            return HDF_TYPE_HDFRDB
+        elif first_4_chars.startswith('DOS'):
+            if file_stat.st_size < 4 * 1024 * 1024:
+                return HDF_TYPE_DISKIMAGE
+            else:
+                return HDF_TYPE_HDF
+
+    return None
+
+
 def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
     config = []
 
     boot_priority = get_label_hard_file_boot_priority(idrive['label'])
+    hdf_type = get_hdf_type(idrive['pathname'])
 
-    config.append('hardfile2=rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0'.format(
+    sectors = 0
+    surfaces = 0
+    reserved = 0
+    blocksize = 512
+
+    if hdf_type == HDF_TYPE_HDF:
+        sectors = 32
+        surfaces = 1
+        reserved = 2
+        blocksize = 512
+
+    config.append('hardfile2=rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,uae{controller_index},0'.format(
         drive_index=drive_index,
         pathname=idrive['pathname'],
-        boot_priority=boot_priority
+        sectors=sectors,
+        surfaces=surfaces,
+        reserved=reserved,
+        blocksize=blocksize,
+        boot_priority=boot_priority,
+        controller_index=drive_index
     ))
-    config.append('uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},0,0,0,512,{boot_priority},,uae1,0'.format(
+    config.append('uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,uae{controller_index},0'.format(
         drive_index=drive_index,
         pathname=idrive['pathname'],
-        boot_priority=boot_priority
+        sectors=sectors,
+        surfaces=surfaces,
+        reserved=reserved,
+        blocksize=blocksize,
+        boot_priority=boot_priority,
+        controller_index=drive_index
     ))
 
     return config
