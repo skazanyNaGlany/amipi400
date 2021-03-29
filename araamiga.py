@@ -521,9 +521,12 @@ def get_partitions2() -> OrderedDict:
                 get_relative_path(full_path)
             ),
             'label': found[4],
-            'config': get_mountpoint_config(found[3]),
+            'config': None,
             'device': full_path
         }
+
+        if device_data['mountpoint']:
+            device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
 
         ret[full_path] = device_data
 
@@ -660,11 +663,12 @@ def mount_partitions(partitions: dict) -> list:
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         force_fsck(key)
-        force_all_rw(key)
+        sh.mount(key, '-ouser,umask=0000,sync,noatime', value['internal_mountpoint'])
 
-        sh.mount(key, '-ouser,umask=0000,sync', value['internal_mountpoint'])
+        force_all_rw(value['internal_mountpoint'])
 
         partitions[key]['mountpoint'] = value['internal_mountpoint']
+        partitions[key]['config'] = get_mountpoint_config(value['internal_mountpoint'])
 
         mounted.append(key)
 
