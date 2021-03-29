@@ -72,7 +72,7 @@ index 00000000..c8ffa9aa
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
 new file mode 100644
-index 00000000..13500d15
+index 00000000..184c6dd5
 --- /dev/null
 +++ b/src/araamiga/handler.cpp
 @@ -0,0 +1,24 @@
@@ -87,7 +87,7 @@ index 00000000..13500d15
 +
 +void SIGUSR1_handler(int signum)
 +{
-+    printf("[%s] received USR1 signal\n", APP_NAME);
++    printf("[%s] received SIGUSR1 signal\n", APP_NAME);
 +
 +    execute_ini_file(TMP_INI_FILE);
 +
@@ -96,9 +96,9 @@ index 00000000..13500d15
 +
 +
 +void araamiga_handler_init() {
-+    printf("[%s] initialise handlers\n", APP_NAME);
-+
-+    signal(SIGUSR1, SIGUSR1_handler);
++    if (signal(SIGUSR1, SIGUSR1_handler) == SIG_ERR) {
++        printf("[%s] failed to set signal handler (SIGUSR1)\n", APP_NAME);
++    }
 +}
 diff --git a/src/araamiga/handler.h b/src/araamiga/handler.h
 new file mode 100644
