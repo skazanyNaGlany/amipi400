@@ -72,10 +72,10 @@ index 00000000..c8ffa9aa
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
 new file mode 100644
-index 00000000..184c6dd5
+index 00000000..538a68f4
 --- /dev/null
 +++ b/src/araamiga/handler.cpp
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +#include "consts.h"
 +#include "handler.h"
 +#include "ini-exec.h"
@@ -90,6 +90,7 @@ index 00000000..184c6dd5
 +    printf("[%s] received SIGUSR1 signal\n", APP_NAME);
 +
 +    execute_ini_file(TMP_INI_FILE);
++    remove(TMP_INI_FILE);
 +
 +    printf("[%s] done processing signal\n", APP_NAME);
 +}
