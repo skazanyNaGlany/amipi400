@@ -311,6 +311,14 @@ def replace_floppy(floppy_index: int, floppy_pattern_name: str):
 
     floppies[floppy_index] = None
 
+    # some games like Dreamweb will fail to detect
+    # new floppy when we change it too fast
+    # so split eject and insert into two parts
+    # using "commit" local command:
+    # eject, sleep 1 second, insert
+    put_command('local-commit')
+    put_command('local-sleep 1')
+
     attach_mountpoint_floppy(device, medium, pathname)
 
 
@@ -339,6 +347,9 @@ def replace_floppy_by_mountpoint(partitions: dict, floppy_index: int, floppy_pat
     if not pathname:
         return
 
+    put_command('local-commit')
+    put_command('local-sleep 1')
+
     floppies[floppy_index] = None
 
     attach_mountpoint_floppy(medium['device'], medium, pathname)
@@ -363,7 +374,6 @@ def process_floppy_replace_action(partitions: dict, action: str):
         replace_floppy(idf_index, action_data)
     else:
         replace_floppy_by_mountpoint(partitions, idf_index, action_data)
-
 
 
 def find_similar_roms(rom_path: str) -> list:
@@ -432,6 +442,8 @@ def process_floppy_replace_by_index_action(partitions: dict, action: str):
         put_command('ext_disk_eject {index}'.format(
             index=idf_index
         ))
+        put_command('local-commit')
+        put_command('local-sleep 1')
 
         floppies[idf_index] = None
 
@@ -611,39 +623,90 @@ def process_changed_drives():
 
 def send_SIGUSR1_signal():
     if not AUTOSEND_SIGNAL:
-        return
+        return False
 
     print_log('Sending SIGUSR1 signal to Amiberry emulator')
 
     try:
         sh.killall('-USR1', 'amiberry')
+
+        return True
     except sh.ErrorReturnCode_1:
         print_log('No process found')
+
+        return False
+
+
+def process_local_command(command: str, str_commands: str):
+    if command == 'local-commit':
+        if not str_commands:
+            return False
+
+        print_log('Committing')
+
+        write_tmp_ini(str_commands)
+
+        if send_SIGUSR1_signal():
+            block_till_tmp_ini_exists()
+
+            return True
+
+        return False
+    elif command.startswith('local-sleep '):
+        parts = command.split(' ')
+
+        if len(parts) != 2:
+            return False
+
+        seconds = int(parts[1])
+
+        print_log('Sleeping for {seconds} seconds'.format(
+            seconds=seconds
+        ))
+
+        time.sleep(seconds)
+
+    return False
+
+
+def write_tmp_ini(str_commands: str):
+    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
+        f.write('[commands]' + os.linesep)
+        f.write(str_commands)
+
+
+def block_till_tmp_ini_exists():
+    while os.path.exists(EMULATOR_TMP_INI_PATHNAME):
+        time.sleep(1)
 
 
 def execute_commands():
     global commands
 
-    if not commands:
-        return
+    str_commands = ''
+    index = 0
 
-    contents = '[commands]\n'
+    while commands:
+        icommand = commands.pop(0).strip()
 
-    for index, icmd in enumerate(commands):
-        contents += 'cmd{index}={cmd}\n'.format(
+        if icommand.startswith('local-'):
+            if process_local_command(icommand, str_commands):
+                str_commands = ''
+                index = 0
+
+            continue
+
+        str_commands += 'cmd{index}={cmd}\n'.format(
             index=index,
-            cmd=icmd
+            cmd=icommand
         )
+        index += 1
 
-    commands = []
+    if str_commands:
+        write_tmp_ini(str_commands)
 
-    print_log(EMULATOR_TMP_INI_PATHNAME + ' contents:')
-    print_log(contents)
-
-    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
-        f.write(contents)
-
-    send_SIGUSR1_signal()
+        if send_SIGUSR1_signal():
+            block_till_tmp_ini_exists()
 
 
 def mount_partitions(partitions: dict) -> list:
@@ -1527,9 +1590,9 @@ while True:
     old_partitions = partitions
 
     process_changed_drives()
-    print_commands()
 
     if commands:
+        print_commands()
         execute_commands()
         clear_system_cache()
 
