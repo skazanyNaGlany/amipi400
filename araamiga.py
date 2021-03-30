@@ -38,9 +38,8 @@ TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 CONFIG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'default.uae')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 ENABLE_LOGGER = False
-ENABLE_MOUSE_UNGRAB = False
-ENABLE_F12_GUI = True
 ENABLE_TURN_OFF_MONITOR = False
+ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
 EMULATOR_EXE_PATHNAME = 'amiberry'
 EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
 MAX_FLOPPIES = 4
@@ -235,10 +234,11 @@ def ctrl_alt_del_keyboard_action():
     elif not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
         ctrl_alt_del_press_ts = 0
 
-    if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
-        ctrl_alt_del_press_ts = 0
+    if ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL:
+        if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
+            ctrl_alt_del_press_ts = 0
 
-        kill_emulator()
+            kill_emulator()
 
 
 def string_unify2(str_to_unify: str, exclude = None) -> str:
@@ -1273,7 +1273,6 @@ def is_medium_floppy_auto_insert(medium_data):
         return True
 
     return medium_data['config']['floppy'].getboolean('auto_insert')
-    # return medium_data['config']['floppy']['auto_insert'] != 'false'
 
 
 def is_emulator_running():
@@ -1375,58 +1374,6 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
     ))
 
     return config
-
-
-# def generate_config(with_hard_drives = True):
-#     # make config copy from default config
-#     config_copy = copy.deepcopy(CONFIG)
-#     config_data_copy = CUSTOM_CONFIG.copy()
-
-#     # floppies
-#     for index, ifloppy in enumerate(floppies):
-#         index_str = str(index)
-
-#         config_data_copy['floppy' + index_str] = ''
-
-#         if ifloppy:
-#             config_data_copy['floppy' + index_str] = ifloppy['pathname']
-
-#     # hard drives
-#     drive_index = 0
-#     hard_drives = ''
-
-#     if with_hard_drives:
-#         for index, idrive in enumerate(drives):
-#             if idrive:
-#                 if idrive['is_dir']:
-#                     drive_config = get_dir_drive_config_command_line(drive_index, idrive)
-
-#                     hard_drives += drive_config[0] + '\n'
-#                     hard_drives += drive_config[1] + '\n'
-
-#                     drive_index += 1
-#                 elif idrive['is_hdf']:
-#                     drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
-
-#                     hard_drives += drive_config[0] + '\n'
-#                     hard_drives += drive_config[1] + '\n'
-
-#                     drive_index += 1
-
-#     config_data_copy['hard_drives'] = hard_drives
-
-#     if ENABLE_F12_GUI:
-#         config_data_copy['amiberry__open_gui'] = ''
-    
-#     if ENABLE_MOUSE_UNGRAB:
-#         config_data_copy['magic_mouse'] = '1'
-
-#     # fill config
-#     config_copy = config_copy.format_map(config_data_copy)
-
-#     with open(CONFIG_PATHNAME, 'w+', newline=None) as f:
-#         f.write(config_copy)
-
 
 
 def get_media_command_line_config():
