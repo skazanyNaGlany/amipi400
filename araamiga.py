@@ -678,7 +678,7 @@ def write_tmp_ini(str_commands: str):
 
 def block_till_tmp_ini_exists():
     while os.path.exists(EMULATOR_TMP_INI_PATHNAME):
-        time.sleep(1)
+        time.sleep(0)
 
 
 def execute_commands():
