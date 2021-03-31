@@ -35,8 +35,13 @@ except ImportError as xie:
 
 APP_UNIXNAME = 'araamiga'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
+DEVS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'dev')
 CONFIG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'default.uae')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
+INTERNAL_DRIVE_LABEL = 'Internal'
+INTERNAL_DRIVE_PERMISSION = 'ro'
+INTERNAL_DRIVE_BOOT_PRIORITY = -128     # -128 means not bootable
+ENABLE_INTERNAL_DRIVE = True
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
 ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
@@ -1287,6 +1292,26 @@ def is_emulator_running():
     return False
 
 
+def format_filesystem2_string(permissions: str, drive_index: int, label: str, pathname: str, boot_priority: int):
+    return 'filesystem2={permissions},DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
+        permissions=permissions,
+        drive_index=drive_index,
+        label=label,
+        pathname=pathname,
+        boot_priority=boot_priority
+    )
+
+
+def format_uaehf_dir_string(drive_index: int, permissions: str, label: str, pathname: str, boot_priority: int):
+    return 'uaehf{drive_index}=dir,{permissions},DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
+        drive_index=drive_index,
+        permissions=permissions,
+        label=label,
+        pathname=pathname,
+        boot_priority=boot_priority
+    )
+
+
 def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
     config = []
 
@@ -1296,18 +1321,24 @@ def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
     if not label:
         label = drive_data['label']
 
-    config.append('filesystem2=rw,DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
-        drive_index=drive_index,
-        label=label,
-        pathname=drive_data['pathname'],
-        boot_priority=boot_priority
-    ))
-    config.append('uaehf{drive_index}=dir,rw,DH{drive_index}:{label}:{pathname},{boot_priority}'.format(
-        drive_index=drive_index,
-        label=label,
-        pathname=drive_data['pathname'],
-        boot_priority=boot_priority
-    ))
+    config.append(
+        format_filesystem2_string(
+            'rw',
+            drive_index,
+            label,
+            drive_data['pathname'],
+            boot_priority
+        )
+    )
+    config.append(
+        format_uaehf_dir_string(
+            drive_index,
+            'rw',
+            label,
+            drive_data['pathname'],
+            boot_priority
+        )
+    )
 
     return config
 
@@ -1412,6 +1443,24 @@ def get_media_command_line_config():
                 )
 
                 drive_index += 1
+
+    if ENABLE_INTERNAL_DRIVE and drive_index < MAX_DRIVES:
+        # add read-only internal drive
+        str_drives += '-s ' + format_filesystem2_string(
+            INTERNAL_DRIVE_PERMISSION,
+            drive_index,
+            INTERNAL_DRIVE_LABEL,
+            DEVS_PATHNAME,
+            INTERNAL_DRIVE_BOOT_PRIORITY
+        ) + ' '
+
+        str_drives += ' -s ' + format_uaehf_dir_string(
+            drive_index,
+            INTERNAL_DRIVE_PERMISSION,
+            INTERNAL_DRIVE_LABEL,
+            DEVS_PATHNAME,
+            INTERNAL_DRIVE_BOOT_PRIORITY
+        ) + ' '
 
     return {
         'floppies': str_floppies,
