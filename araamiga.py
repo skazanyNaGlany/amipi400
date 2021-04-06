@@ -367,7 +367,7 @@ def process_floppy_replace_action(partitions: dict, action: str):
     if idf_index + 1 > MAX_FLOPPIES:
         return
 
-    put_command('ext_disk_eject {index}'.format(
+    put_command('disk_eject {index}'.format(
         index=idf_index
     ))
 
@@ -445,7 +445,7 @@ def process_floppy_replace_by_index_action(partitions: dict, action: str):
         device = floppies[idf_index]['device']
         medium = floppies[idf_index]['medium']
 
-        put_command('ext_disk_eject {index}'.format(
+        put_command('disk_eject {index}'.format(
             index=idf_index
         ))
         put_command('local-commit')
@@ -1118,7 +1118,7 @@ def process_unmounted(unmounted: list):
 
                 floppies[idf_index] = None
 
-                put_command('ext_disk_eject {index}'.format(
+                put_command('disk_eject {index}'.format(
                     index=idf_index
                 ))
 
@@ -1198,7 +1198,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
             'medium': ipart_data
         }
 
-        put_command('ext_disk_insert_force {df_no},{pathname},0'.format(
+        put_command('disk_insert_force {df_no},{pathname},0'.format(
             df_no=index,
             pathname=iadf
         ))
