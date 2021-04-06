@@ -121,7 +121,7 @@ index 00000000..d276f220
 +#endif  // ARAAMIGA_HANDLER_H_
 diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
 new file mode 100644
-index 00000000..9ccfed47
+index 00000000..e1688a61
 --- /dev/null
 +++ b/src/araamiga/ini-exec.cpp
 @@ -0,0 +1,139 @@
@@ -182,7 +182,7 @@ index 00000000..9ccfed47
 +}
 +
 +
-+void _comand_disk_insert_force(const std::string &command_data) {
++void _command_disk_insert_force(const std::string &command_data) {
 +    std::vector<std::string> parts;
 +
 +    parts = string_split(command_data, ',');
@@ -200,7 +200,7 @@ index 00000000..9ccfed47
 +}
 +
 +
-+void _comand_uae_reset(const std::string &command_data) {
++void _command_uae_reset(const std::string &command_data) {
 +    std::vector<std::string> parts;
 +
 +    parts = string_split(command_data, ',');
@@ -236,10 +236,10 @@ index 00000000..9ccfed47
 +        disk_eject(atoi(string_cut_from_string(raw_command, " ").c_str()));
 +    }
 +    else if (string_starts_with(raw_command, "disk_insert_force ")) {
-+        _comand_disk_insert_force(string_cut_from_string(raw_command, " "));
++        _command_disk_insert_force(string_cut_from_string(raw_command, " "));
 +    }
 +    else if (string_starts_with(raw_command, "uae_reset ")) {
-+        _comand_uae_reset(string_cut_from_string(raw_command, " "));
++        _command_uae_reset(string_cut_from_string(raw_command, " "));
 +    }
 +    else if (string_starts_with(raw_command, "uae_quit ")) {
 +        uae_quit();
@@ -266,7 +266,7 @@ index 00000000..9ccfed47
 +}
 diff --git a/src/araamiga/ini-exec.h b/src/araamiga/ini-exec.h
 new file mode 100644
-index 00000000..bd95a45e
+index 00000000..ead19c18
 --- /dev/null
 +++ b/src/araamiga/ini-exec.h
 @@ -0,0 +1,12 @@
@@ -278,8 +278,8 @@ index 00000000..bd95a45e
 +int execute_ini_file(const std::string &pathname);
 +int _execute_command(const std::string &command);
 +
-+void _comand_disk_insert_force(const std::string &command_data);
-+void _comand_uae_reset(const std::string &command_data);
++void _command_disk_insert_force(const std::string &command_data);
++void _command_uae_reset(const std::string &command_data);
 +
 +#endif  // ARAAMIGA_INI_EXEC_H_
 diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
