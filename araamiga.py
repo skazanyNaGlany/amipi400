@@ -29,7 +29,7 @@ try:
     from configparser import ConfigParser
     from array import array
 except ImportError as xie:
-    print_log(xie)
+    print(str(xie))
     sys.exit(1)
 
 
@@ -438,6 +438,8 @@ def process_floppy_replace_by_index_action(partitions: dict, action: str):
         if rom_sign in value:
             to_insert_pathname = value
 
+            break
+
     if to_insert_pathname:
         if floppies[idf_index]['pathname'] == to_insert_pathname:
             return
@@ -682,7 +684,7 @@ def write_tmp_ini(str_commands: str):
 
 
 def block_till_tmp_ini_exists():
-    while os.path.exists(EMULATOR_TMP_INI_PATHNAME):
+    while os.path.exists(EMULATOR_TMP_INI_PATHNAME) and is_emulator_running():
         time.sleep(0)
 
 
