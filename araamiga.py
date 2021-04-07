@@ -410,7 +410,19 @@ def find_similar_roms(rom_path: str) -> list:
     return sorted(similar)
 
 
-def process_floppy_replace_by_index_action(partitions: dict, action: str):
+def process_floppy_eject_action(action: str):
+    idf_index = int(action[2])
+
+    if idf_index + 1 > MAX_FLOPPIES:
+        return
+
+    if not floppies[idf_index]:
+        return
+
+    detach_floppy(idf_index)
+
+
+def process_floppy_replace_by_index_action(action: str):
     idf_index = int(action[2])
 
     if idf_index + 1 > MAX_FLOPPIES:
@@ -444,16 +456,10 @@ def process_floppy_replace_by_index_action(partitions: dict, action: str):
         if floppies[idf_index]['pathname'] == to_insert_pathname:
             return
 
-        device = floppies[idf_index]['device']
-        medium = floppies[idf_index]['medium']
+        detached_flloppy_data = detach_floppy(idf_index, True)
 
-        put_command('disk_eject {index}'.format(
-            index=idf_index
-        ))
-        put_command('local-commit')
-        put_command('local-sleep 1')
-
-        floppies[idf_index] = None
+        device = detached_flloppy_data['device']
+        medium = detached_flloppy_data['medium']
 
         attach_mountpoint_floppy(device, medium, to_insert_pathname)
 
@@ -463,7 +469,7 @@ def process_tab_combo_action(partitions: dict, action: str):
 
     if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
         if len_action >= 4 and len_action <= 5:
-            process_floppy_replace_by_index_action(partitions, action)
+            process_floppy_replace_by_index_action(action)
 
             return
 
@@ -1113,16 +1119,7 @@ def process_unmounted(unmounted: list):
                 continue
 
             if ifloppy_data['device'] == idevice:
-                print_log('Detaching "{pathname}" from DF{index}'.format(
-                    pathname=ifloppy_data['pathname'],
-                    index=idf_index
-                ))
-
-                floppies[idf_index] = None
-
-                put_command('disk_eject {index}'.format(
-                    index=idf_index
-                ))
+                detach_floppy(idf_index)
 
                 detached.append(idevice)
 
@@ -1158,6 +1155,34 @@ def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
         files.append(os.path.join(mountpoint, ifile))
 
     return sorted(files)
+
+
+def detach_floppy(index: int, auto_commit: bool = False) -> dict:
+    global floppies
+
+    floppy_data = floppies[index]
+
+    print_log('Detaching "{pathname}" from DF{index}'.format(
+        pathname=floppy_data['pathname'],
+        index=index
+    ))
+
+    floppies[index] = None
+
+    put_command('disk_eject {index}'.format(
+        index=index
+    ))
+
+    if auto_commit:
+        # some games like Dreamweb will fail to detect
+        # new floppy when we change it too fast
+        # so split eject and insert into two parts
+        # using "commit" local command:
+        # eject, sleep 1 second, insert
+        put_command('local-commit')
+        put_command('local-sleep 1')
+
+    return floppy_data
 
 
 def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
