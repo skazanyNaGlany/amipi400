@@ -1,0 +1,6 @@
+pynput
+logzero
+sh
+pyudev
+
+
