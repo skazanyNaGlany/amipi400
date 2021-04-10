@@ -110,9 +110,10 @@ def check_pre_requirements():
 def configure_system():
     print_log('Configuring system')
 
-    os.system('swapoff -a')
-    os.system('sysctl -q vm.swappiness=0')
-    os.system('sysctl -q vm.vfs_cache_pressure=200')
+    # temporary disabled
+    # os.system('swapoff -a')
+    # os.system('sysctl -q vm.swappiness=0')
+    # os.system('sysctl -q vm.vfs_cache_pressure=200')
 
 
 def check_emulator():
