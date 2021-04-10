@@ -94,6 +94,7 @@ kickstart_pathname = None
 monitor_off_timestamp = 0
 monitor_state = MONITOR_STATE_ON
 monitor_off_seconds = 0
+external_mounted_processed = False
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -351,31 +352,6 @@ def find_similar_file_adf(directory, pattern):
     return None
 
 
-def replace_floppy(floppy_index: int, floppy_pattern_name: str):
-    pathname = find_similar_file_adf(
-        floppies[floppy_index]['mountpoint'],
-        floppy_pattern_name
-    )
-
-    if not pathname:
-        return
-
-    device = floppies[floppy_index]['device']
-    medium = floppies[floppy_index]['medium']
-
-    floppies[floppy_index] = None
-
-    # some games like Dreamweb will fail to detect
-    # new floppy when we change it too fast
-    # so split eject and insert into two parts
-    # using "commit" local command:
-    # eject, sleep 1 second, insert
-    put_command('local-commit')
-    put_command('local-sleep 1')
-
-    attach_mountpoint_floppy(device, medium, pathname)
-
-
 def find_floppy_first_mountpoint(partitions: dict, floppy_index: int) -> dict:
     for key, value in partitions.items():
         if not is_floppy_label(value['label']):
@@ -385,13 +361,28 @@ def find_floppy_first_mountpoint(partitions: dict, floppy_index: int) -> dict:
             return value
 
     return None
- 
 
-def replace_floppy_by_mountpoint(partitions: dict, floppy_index: int, floppy_pattern_name: str):
-    medium = find_floppy_first_mountpoint(partitions, floppy_index)
 
-    if not medium:
+def process_floppy_replace_action(partitions: dict, action: str):
+    idf_index = int(action[2])
+
+    if idf_index + 1 > MAX_FLOPPIES:
         return
+
+    detached_floppy_data = detach_floppy(idf_index)
+    floppy_pattern_name = action[3:].strip()
+
+    if not floppy_pattern_name:
+        return
+
+    if detached_floppy_data:
+        medium = detached_floppy_data['medium']
+    else:
+        medium = find_floppy_first_mountpoint(partitions, idf_index)
+
+        if not medium:
+            # should not get here
+            return
 
     pathname = find_similar_file_adf(
         medium['mountpoint'],
@@ -404,30 +395,7 @@ def replace_floppy_by_mountpoint(partitions: dict, floppy_index: int, floppy_pat
     put_command('local-commit')
     put_command('local-sleep 1')
 
-    floppies[floppy_index] = None
-
     attach_mountpoint_floppy(medium['device'], medium, pathname)
-
-
-def process_floppy_replace_action(partitions: dict, action: str):
-    idf_index = int(action[2])
-
-    if idf_index + 1 > MAX_FLOPPIES:
-        return
-
-    put_command('disk_eject {index}'.format(
-        index=idf_index
-    ))
-
-    action_data = action[3:].strip()
-
-    if not action_data:
-        return
-
-    if floppies[idf_index]:
-        replace_floppy(idf_index, action_data)
-    else:
-        replace_floppy_by_mountpoint(partitions, idf_index, action_data)
 
 
 def find_similar_roms(rom_path: str) -> list:
@@ -456,18 +424,6 @@ def find_similar_roms(rom_path: str) -> list:
                 similar.append(ifile)
 
     return sorted(similar)
-
-
-def process_floppy_eject_action(action: str):
-    idf_index = int(action[2])
-
-    if idf_index + 1 > MAX_FLOPPIES:
-        return
-
-    if not floppies[idf_index]:
-        return
-
-    detach_floppy(idf_index)
 
 
 def process_floppy_replace_by_index_action(action: str):
@@ -504,10 +460,10 @@ def process_floppy_replace_by_index_action(action: str):
         if floppies[idf_index]['pathname'] == to_insert_pathname:
             return
 
-        detached_flloppy_data = detach_floppy(idf_index, True)
+        detached_floppy_data = detach_floppy(idf_index, True)
 
-        device = detached_flloppy_data['device']
-        medium = detached_flloppy_data['medium']
+        device = detached_floppy_data['device']
+        medium = detached_floppy_data['medium']
 
         attach_mountpoint_floppy(device, medium, to_insert_pathname)
 
@@ -988,14 +944,6 @@ def process_new_mounted(partitions: dict, new_mounted: list):
     return attached
 
 
-def has_attached_df0():
-    return floppies[0] is not None
-
-
-def has_attached_dh0():
-    return drives[0] is not None
-
-
 def is_mountpoint_attached(mountpoint: str) -> bool:
     for imedium in floppies + drives:
         if not imedium:
@@ -1059,6 +1007,12 @@ def process_other_mounted_hard_file(partitions: dict):
 
 
 def process_other_mounted(partitions: dict):
+    global external_mounted_processed
+
+    if external_mounted_processed:
+        return []
+
+    external_mounted_processed = True
     attached = []
 
     attached += process_other_mounted_floppy(partitions)
@@ -1209,6 +1163,9 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
     global floppies
 
     floppy_data = floppies[index]
+
+    if not floppy_data:
+        return None
 
     print_log('Detaching "{pathname}" from DF{index}'.format(
         pathname=floppy_data['pathname'],
