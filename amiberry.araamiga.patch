@@ -1,8 +1,8 @@
 diff --git a/Android.mk b/Android.mk
-index ee2df16a..bc6f4358 100644
+index 37d06503..19eec88e 100644
 --- a/Android.mk
 +++ b/Android.mk
-@@ -182,7 +182,9 @@ LOCAL_SRC_FILES := src/archivers/7z/BraIA64.c \
+@@ -198,7 +198,9 @@ LOCAL_SRC_FILES := src/archivers/7z/BraIA64.c \
                      src/osdep/gui/main_window.cpp \
                      src/osdep/gui/Navigation.cpp \
                      src/osdep/gui/androidsdl_event.cpp \
@@ -14,23 +14,23 @@ index ee2df16a..bc6f4358 100644
  ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
      LOCAL_SRC_FILES += src/osdep/aarch64_helper_min.s
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index caa088f0..dcfcf31b 100644
+index 5dc5232d..1bba5d3f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -166,6 +166,8 @@ set(SRC_FILES
-         src/osdep/amiberry_rp9.cpp
+@@ -136,6 +136,8 @@ add_executable(amiberry
+         src/osdep/amiberry_gui.cpp
          src/osdep/amiberry_mem.cpp
          src/osdep/amiberry_whdbooter.cpp
 +        src/araamiga/utils.cpp
 +        src/araamiga/handler.cpp
          src/osdep/sigsegv_handler.cpp
+         src/osdep/retroarch.cpp
          src/sounddep/sound.cpp
-         src/osdep/gui/InGameMessage.cpp
 diff --git a/Makefile b/Makefile
-index 4872239e..6686abdb 100644
+index f70dfbc0..e9ab3ba6 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -438,7 +438,10 @@ OBJS =	\
+@@ -441,7 +441,10 @@ OBJS =	\
  	src/osdep/gui/PanelPrio.o \
  	src/osdep/gui/PanelSavestate.o \
  	src/osdep/gui/main_window.o \
@@ -394,13 +394,13 @@ index 00000000..d16e01a2
 +
 +#endif  // ARAAMIGA_UTILS_H_
 diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp
-index 58b02fc4..30da1a8b 100644
+index dc1e4210..1e064ea5 100644
 --- a/src/cfgfile.cpp
 +++ b/src/cfgfile.cpp
-@@ -3522,12 +3522,18 @@ static int cfgfile_parse_host(struct uae_prefs* p, TCHAR* option, TCHAR* value)
- 		|| cfgfile_strval(option, value, _T("absolute_mouse"), &p->input_tablet, abspointers, 0))
+@@ -3535,12 +3535,18 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
+ 	if (cfgfile_multichoice(option, value, _T("debugging_features"), &p->debugging_features, debugfeatures))
  		return 1;
- 
+ #endif
 -	if (cfgfile_yesno(option, value, _T("magic_mouse"), &vb)) {
 -		if (vb)
 -			p->input_mouse_untrap |= MOUSEUNTRAP_MAGIC;
@@ -423,44 +423,44 @@ index 58b02fc4..30da1a8b 100644
  
  #ifdef GFXFILTER
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index 5dc6deee..1854ae5e 100644
+index cd700f24..8c2ee1dd 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
-@@ -48,6 +48,8 @@
- #include "clipboard.h"
- #include "uae/uae.h"
+@@ -62,6 +62,8 @@ int log_scsi;
+ int uaelib_debug;
+ int pissoff_value = 15000 * CYCLE_UNIT;
  
 +#include "araamiga/handler.h"
 +
  extern FILE* debugfile;
+ SDL_Cursor* normalcursor;
  
- int pause_emulation;
-@@ -84,12 +86,18 @@ std::string get_version_string()
+@@ -146,12 +148,18 @@ amiberry_hotkey get_hotkey_from_config(std::string config_option)
  
  void set_key_configs(struct uae_prefs* p)
  {
 -	if (strncmp(p->open_gui, "", 1) != 0)
 -		// If we have a value in the config, we use that instead
--		enter_gui_key = SDL_GetKeyFromName(p->open_gui);
+-		enter_gui_key = get_hotkey_from_config(p->open_gui);
 -	else
 -		// Otherwise we go for the default found in amiberry.conf
--		enter_gui_key = SDL_GetKeyFromName(amiberry_options.default_open_gui_key);
+-		enter_gui_key = get_hotkey_from_config(amiberry_options.default_open_gui_key);
 +	if (strncmp(p->open_gui, "none", 4) != 0) {
 +		if (strncmp(p->open_gui, "", 1) != 0)
 +			// If we have a value in the config, we use that instead
-+			enter_gui_key = SDL_GetKeyFromName(p->open_gui);
++			enter_gui_key = get_hotkey_from_config(p->open_gui);
 +		else
 +			// Otherwise we go for the default found in amiberry.conf
-+			enter_gui_key = SDL_GetKeyFromName(amiberry_options.default_open_gui_key);
++			enter_gui_key = get_hotkey_from_config(amiberry_options.default_open_gui_key);
 +	}
 +	else {
 +		// open_gui is "none", so "enter_gui_key" will be disabled
-+		enter_gui_key = -1;
++		enter_gui_key.scancode = -1;
 +	}
  	// if nothing was found in amiberry.conf either, we default back to F12
- 	if (enter_gui_key == 0)
- 		enter_gui_key = SDLK_F12;
-@@ -1424,6 +1432,8 @@ int main(int argc, char* argv[])
+ 	if (enter_gui_key.scancode == 0)
+ 		enter_gui_key.scancode = SDL_SCANCODE_F12;
+@@ -2952,6 +2960,8 @@ int main(int argc, char* argv[])
  		abort();
  	}
  
@@ -468,19 +468,12 @@ index 5dc6deee..1854ae5e 100644
 +
  	alloc_AmigaMem();
  	RescanROMs();
- 	clipboard_init();
-@@ -2065,4 +2075,4 @@ bool get_plugin_path(TCHAR* out, int len, const TCHAR* path)
- 		out[0] = '\0';
- 	}
- 	return TRUE;
--}
-\ No newline at end of file
-+}
+ 	uae_time_calibrate();
 diff --git a/src/zfile.cpp b/src/zfile.cpp
-index 6bc1330a..82cae620 100644
+index 59beb4e3..5aa77e45 100644
 --- a/src/zfile.cpp
 +++ b/src/zfile.cpp
-@@ -2435,6 +2435,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
+@@ -2458,6 +2458,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
  	int pos, size;
  	uae_u32 crc;
  
