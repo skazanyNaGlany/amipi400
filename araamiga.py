@@ -45,12 +45,19 @@ ENABLE_INTERNAL_DRIVE = True
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
 ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
-EMULATOR_EXE_PATHNAME = 'amiberry'
-EMULATOR_TMP_INI_PATHNAME = os.path.join(os.path.dirname(os.path.realpath(EMULATOR_EXE_PATHNAME)), 'amiberry.tmp.ini')
+EMULATOR_EXE_PATHNAMES = [
+    'amiberry',
+    '../amiberry/amiberry'
+]
+EMULATOR_TMP_INI_NAME = 'amiberry.tmp.ini'
 MAX_FLOPPIES = 4
 MAX_DRIVES = 6
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
-KICKSTART_PATHNAME = 'kickstarts/Kickstart3.1.rom'
+KICKSTART_PATHNAMES = [
+    '/boot/araamiga/kickstarts/Kickstart3.1.rom',
+    '../amiberry/kickstarts/Kickstart3.1.rom',
+    'kickstarts/Kickstart3.1.rom',
+]
 # stock Amiga 1200
 EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s joyport1=none -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
@@ -81,6 +88,12 @@ key_delete_pressed = False
 ctrl_alt_del_press_ts = 0
 tab_combo = []
 tab_combo_recording = False
+emulator_exe_pathname = None
+emulator_tmp_ini_pathname = None
+kickstart_pathname = None
+monitor_off_timestamp = 0
+monitor_state = MONITOR_STATE_ON
+monitor_off_seconds = 0
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -104,6 +117,7 @@ def init_logger():
 
 def check_pre_requirements():
     check_emulator()
+    check_kickstart()
     check_system_binaries()
 
 
@@ -116,18 +130,56 @@ def configure_system():
     # os.system('sysctl -q vm.vfs_cache_pressure=200')
 
 
+def configure_tmp_ini():
+    global emulator_tmp_ini_pathname
+
+    emulator_tmp_ini_pathname = os.path.join(os.path.dirname(os.path.realpath(emulator_exe_pathname)), EMULATOR_TMP_INI_NAME)
+
+
 def check_emulator():
-    global EMULATOR_EXE_PATHNAME
+    global emulator_exe_pathname
 
     print_log('Checking emulator')
 
-    emu_real_pathname = os.path.realpath(EMULATOR_EXE_PATHNAME)
+    for ipathname in EMULATOR_EXE_PATHNAMES:
+        irealpath = os.path.realpath(ipathname)
 
-    if not os.path.exists(emu_real_pathname):
-        print_log('Emulator executable ' + EMULATOR_EXE_PATHNAME + ' does not exists')
+        if os.path.exists(irealpath):
+            emulator_exe_pathname = irealpath
+
+            break
+
+    if not emulator_exe_pathname:
+        print_log('Emulator executable does not exists, checked {paths}'.format(
+            paths=', '.join(EMULATOR_EXE_PATHNAMES)
+        ))
+
         sys.exit(1)
 
-    EMULATOR_EXE_PATHNAME = emu_real_pathname
+    print_log('Emulator executable: ' + emulator_exe_pathname)
+
+
+def check_kickstart():
+    global kickstart_pathname
+
+    print_log('Checking kickstart')
+
+    for ipathname in KICKSTART_PATHNAMES:
+        irealpath = os.path.realpath(ipathname)
+
+        if os.path.exists(irealpath):
+            kickstart_pathname = irealpath
+
+            break
+
+    if not kickstart_pathname:
+        print_log('Kickstart does not exists, checked {paths}'.format(
+            paths=', '.join(KICKSTART_PATHNAMES)
+        ))
+
+        sys.exit(1)
+
+    print_log('Kickstart: ' + kickstart_pathname)
 
 
 def check_system_binaries():
@@ -153,11 +205,6 @@ def check_system_binaries():
         if not sh.which(ibin):
             print_log(ibin + ': command not found')
             sys.exit(1)
-
-
-monitor_off_timestamp = 0
-monitor_state = MONITOR_STATE_ON
-monitor_off_seconds = 0
 
 
 def turn_off_monitor():
@@ -685,13 +732,13 @@ def process_local_command(command: str, str_commands: str):
 
 
 def write_tmp_ini(str_commands: str):
-    with open(EMULATOR_TMP_INI_PATHNAME, 'w+', newline=None) as f:
+    with open(emulator_tmp_ini_pathname, 'w+', newline=None) as f:
         f.write('[commands]' + os.linesep)
         f.write(str_commands)
 
 
 def block_till_tmp_ini_exists():
-    while os.path.exists(EMULATOR_TMP_INI_PATHNAME) and is_emulator_running():
+    while os.path.exists(emulator_tmp_ini_pathname) and is_emulator_running():
         time.sleep(0)
 
 
@@ -1314,7 +1361,7 @@ def is_emulator_running():
         return None
 
     for iprocess in psutil.process_iter(attrs=['exe']):
-        if iprocess.info['exe'] == EMULATOR_EXE_PATHNAME:
+        if iprocess.info['exe'] == emulator_exe_pathname:
             return True
 
     return False
@@ -1504,16 +1551,16 @@ def run_emulator():
     media_config = get_media_command_line_config()
 
     pattern = EMULATOR_RUN_PATTERN.format(
-        executable=EMULATOR_EXE_PATHNAME,
+        executable=emulator_exe_pathname,
         config_pathname=CONFIG_PATHNAME,
-        kickstart=KICKSTART_PATHNAME,
+        kickstart=kickstart_pathname,
         floppies=media_config['floppies'],
         drives=media_config['drives']
     )
 
     print_log('Emulator command line: ' + pattern)
 
-    subprocess.Popen(pattern, cwd=os.path.dirname(EMULATOR_EXE_PATHNAME), shell=True)
+    subprocess.Popen(pattern, cwd=os.path.dirname(emulator_exe_pathname), shell=True)
 
     time.sleep(0)
 
@@ -1571,6 +1618,7 @@ def on_key_release(key):
 
 init_logger()
 check_pre_requirements()
+configure_tmp_ini()
 configure_system()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
