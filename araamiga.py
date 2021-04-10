@@ -392,8 +392,7 @@ def process_floppy_replace_action(partitions: dict, action: str):
     if not pathname:
         return
 
-    put_command('local-commit')
-    put_command('local-sleep 1')
+    put_local_commit_command(1)
 
     attach_mountpoint_floppy(medium['device'], medium, pathname)
 
@@ -1184,8 +1183,7 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
         # so split eject and insert into two parts
         # using "commit" local command:
         # eject, sleep 1 second, insert
-        put_command('local-commit')
-        put_command('local-sleep 1')
+        put_local_commit_command(1)
 
     return floppy_data
 
@@ -1250,6 +1248,13 @@ def clear_system_cache(force = False):
     os.system('sync')
     os.system('echo 1 > /proc/sys/vm/drop_caches')
     os.system('sync')
+
+
+def put_local_commit_command(sleep_seconds: int = 0):
+    put_command('local-commit')
+
+    if sleep_seconds:
+        put_command('local-sleep 1')
 
 
 def put_command(command: str, reset: bool = False):
