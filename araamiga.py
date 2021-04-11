@@ -62,11 +62,11 @@ KICKSTART_PATHNAMES = [
     'kickstarts/Kickstart3.1.rom',
 ]
 # stock Amiga 1200
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
 # fastest
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
