@@ -41,6 +41,9 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 INTERNAL_DRIVE_LABEL = 'Internal'
 INTERNAL_DRIVE_PERMISSION = 'ro'
 INTERNAL_DRIVE_BOOT_PRIORITY = -128     # -128 means not bootable
+FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 100
+FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
+ENABLE_FLOPPY_DRIVE_SOUND = 'auto'
 ENABLE_INTERNAL_DRIVE = True
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
@@ -59,7 +62,7 @@ KICKSTART_PATHNAMES = [
     'kickstarts/Kickstart3.1.rom',
 ]
 # stock Amiga 1200
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
 # EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s amiberry.open_gui=none -s magic_mouse=none -r {kickstart} {floppies} {drives}'
 # fastest
@@ -95,6 +98,8 @@ monitor_off_timestamp = 0
 monitor_state = MONITOR_STATE_ON
 monitor_off_seconds = 0
 external_mounted_processed = False
+floppy_disk_in_drive_volume = 0
+floppy_empty_drive_volume = 0
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -135,6 +140,14 @@ def configure_tmp_ini():
     global emulator_tmp_ini_pathname
 
     emulator_tmp_ini_pathname = os.path.join(os.path.dirname(os.path.realpath(emulator_exe_pathname)), EMULATOR_TMP_INI_NAME)
+
+
+def configure_volumes():
+    global floppy_disk_in_drive_volume
+    global floppy_empty_drive_volume
+
+    floppy_disk_in_drive_volume = prepare_floppy_drive_volume(FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME)
+    floppy_empty_drive_volume = prepare_floppy_drive_volume(FLOPPY_EMPTY_DRIVE_SOUND_VOLUME)
 
 
 def check_emulator():
@@ -372,6 +385,8 @@ def process_floppy_replace_action(partitions: dict, action: str):
     detached_floppy_data = detach_floppy(idf_index)
     floppy_pattern_name = action[3:].strip()
 
+    update_floppy_drive_sound(idf_index)
+
     if not floppy_pattern_name:
         return
 
@@ -394,7 +409,8 @@ def process_floppy_replace_action(partitions: dict, action: str):
 
     put_local_commit_command(1)
 
-    attach_mountpoint_floppy(medium['device'], medium, pathname)
+    if attach_mountpoint_floppy(medium['device'], medium, pathname):
+        update_floppy_drive_sound(idf_index)
 
 
 def find_similar_roms(rom_path: str) -> list:
@@ -461,10 +477,13 @@ def process_floppy_replace_by_index_action(action: str):
 
         detached_floppy_data = detach_floppy(idf_index, True)
 
+        update_floppy_drive_sound(idf_index)
+
         device = detached_floppy_data['device']
         medium = detached_floppy_data['medium']
 
-        attach_mountpoint_floppy(device, medium, to_insert_pathname)
+        if attach_mountpoint_floppy(device, medium, to_insert_pathname):
+            update_floppy_drive_sound(idf_index)
 
 
 def process_tab_combo_action(partitions: dict, action: str):
@@ -551,11 +570,14 @@ def get_partitions2() -> OrderedDict:
             ),
             'label': found[4],
             'config': None,
-            'device': full_path
+            'device': full_path,
+            'is_floppy_drive': False
         }
 
         if device_data['mountpoint']:
             device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
+
+        device_data['is_floppy_drive'] = len(found[0]) == 3 and found[0].isalpha() and found[1] == '1.4M' and found[2] == 'disk'
 
         ret[full_path] = device_data
 
@@ -581,6 +603,7 @@ def print_partitions(partitions: dict):
         print_log('  mountpoint: ' + str(value['mountpoint']))
         print_log('  internal_mountpoint: ' + value['internal_mountpoint'])
         print_log('  label: ' + str(value['label']))
+        print_log('  is_floppy_drive: ' + str(value['is_floppy_drive']))
 
         print_log()
 
@@ -932,6 +955,10 @@ def process_new_mounted(partitions: dict, new_mounted: list):
 
         if is_floppy_label(ipart_data['label']):
             if attach_mountpoint_floppy(idevice, ipart_data):
+                update_floppy_drive_sound(
+                    get_label_floppy_index(ipart_data['label'])
+                )
+
                 attached.append(idevice)
         elif is_hard_drive_label(ipart_data['label']):
             if attach_mountpoint_hard_disk(idevice, ipart_data):
@@ -956,6 +983,7 @@ def is_mountpoint_attached(mountpoint: str) -> bool:
 
 def process_other_mounted_floppy(partitions: dict):
     attached = []
+    attached_indexes = []
 
     for ipart_dev, ipart_data in partitions.items():
         if not ipart_data['mountpoint']:
@@ -965,8 +993,19 @@ def process_other_mounted_floppy(partitions: dict):
             continue
 
         if is_floppy_label(ipart_data['label']):
+            drive_index = get_label_floppy_index(ipart_data['label'])
+
+            if drive_index in attached_indexes:
+                # attach only one floppy per index
+                continue
+
             if attach_mountpoint_floppy(ipart_dev, ipart_data):
+                update_floppy_drive_sound(
+                    drive_index
+                )
+
                 attached.append(ipart_dev)
+                attached_indexes.append(drive_index)
 
     return attached
 
@@ -1121,6 +1160,7 @@ def process_unmounted(unmounted: list):
 
             if ifloppy_data['device'] == idevice:
                 detach_floppy(idf_index)
+                update_floppy_drive_sound(idf_index)
 
                 detached.append(idevice)
 
@@ -1156,6 +1196,16 @@ def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
         files.append(os.path.join(mountpoint, ifile))
 
     return sorted(files)
+
+
+def update_floppy_drive_sound(drive_index: int):
+    if ENABLE_FLOPPY_DRIVE_SOUND != 'auto':
+        return
+
+    for ioption in get_floppy_drive_sound_config_options():
+        put_command('cfgfile_parse_line_type_all ' + ioption)
+
+    put_command('config_changed 1')
 
 
 def detach_floppy(index: int, auto_commit: bool = False) -> dict:
@@ -1505,16 +1555,109 @@ def get_media_command_line_config():
     }
 
 
+def format_floppy_sound_option(index: int, enabled: bool, disk_in_drive_volume: int = None, empty_drive_volume: int = None) -> list:
+    enabled_str = '1' if enabled else '0'
+    options = []
+    floppy_soundvolume_disk_option = ''
+    floppy_soundvolume_empty_option = ''
+
+    floppy_sound_option = 'floppy{index}sound={enabled}'.format(
+        index=index,
+        enabled=enabled_str
+    )
+    options.append(floppy_sound_option)
+
+    if disk_in_drive_volume is not None and enabled:
+        floppy_soundvolume_disk_option = 'floppy{index}soundvolume_disk={volume}'.format(
+            index=index,
+            volume=disk_in_drive_volume
+        )
+        options.append(floppy_soundvolume_disk_option)
+
+    if empty_drive_volume is not None and enabled:
+        floppy_soundvolume_empty_option = 'floppy{index}soundvolume_empty={volume}'.format(
+            index=index,
+            volume=empty_drive_volume
+        )
+        options.append(floppy_soundvolume_empty_option)
+
+    return options
+
+
+def prepare_floppy_drive_volume(volume: int) -> int:
+    return 100 - volume
+
+
+def get_floppy_drive_sound_enabled_config_options(enabled: bool = True):
+    options = []
+
+    options.append('floppy_volume=' + str(floppy_disk_in_drive_volume))
+
+    for drive_index in range(MAX_DRIVES):
+        options.extend(
+            format_floppy_sound_option(
+                drive_index,
+                enabled,
+                floppy_disk_in_drive_volume,
+                floppy_empty_drive_volume
+            )
+        )
+
+    return options
+
+
+def get_floppy_drive_sound_config_options():
+    if ENABLE_FLOPPY_DRIVE_SOUND is False:
+        return get_floppy_drive_sound_enabled_config_options(False)
+
+    if ENABLE_FLOPPY_DRIVE_SOUND is True:
+        return get_floppy_drive_sound_enabled_config_options()
+
+    if ENABLE_FLOPPY_DRIVE_SOUND != 'auto':
+        return []
+
+    config_options = []
+    config_options.append('floppy_volume=' + str(floppy_disk_in_drive_volume))
+
+    for drive_index, floppy_data in enumerate(floppies):
+        floppy_drive_sound_enabled = True
+
+        if not floppy_data or floppy_data['medium']['is_floppy_drive']:
+            floppy_drive_sound_enabled = False
+
+        add_options = format_floppy_sound_option(
+            drive_index,
+            floppy_drive_sound_enabled,
+            floppy_disk_in_drive_volume,
+            floppy_empty_drive_volume
+        )
+
+        config_options.extend(add_options)
+
+    return config_options
+
+
+def get_emulator_command_line_config():
+    config_str = ''
+
+    for ioption in get_floppy_drive_sound_config_options():
+        config_str += ' -s ' + ioption + ' '
+
+    return config_str
+
+
 def run_emulator():
     global floppies
 
     print_log('Running emulator')
 
     media_config = get_media_command_line_config()
+    config_options = get_emulator_command_line_config()
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=emulator_exe_pathname,
         config_pathname=CONFIG_PATHNAME,
+        config_options=config_options,
         kickstart=kickstart_pathname,
         floppies=media_config['floppies'],
         drives=media_config['drives']
@@ -1582,6 +1725,7 @@ init_logger()
 check_pre_requirements()
 configure_tmp_ini()
 configure_system()
+configure_volumes()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
