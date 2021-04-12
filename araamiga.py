@@ -538,8 +538,6 @@ def other_actions():
         # logger enabled so clear the console
         os.system('clear')
 
-    os.system('sync')
-
 
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
