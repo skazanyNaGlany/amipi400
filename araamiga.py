@@ -1235,28 +1235,37 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
     return floppy_data
 
 
+def get_mountpoint_adf(ipart_dev, ipart_data, force_file_pathname) -> str:
+    adfs = mountpoint_find_files(ipart_data['mountpoint'], '*.adf')
+
+    if not adfs:
+        return None
+
+    if force_file_pathname and force_file_pathname in adfs:
+        return force_file_pathname
+    else:
+        if not is_medium_floppy_auto_insert_adf(ipart_data):
+            return None
+
+        default_adf = get_medium_floppy_default_adf(ipart_data)
+
+        if default_adf:
+            return default_adf
+
+        return adfs[0]
+
+    return None
+
+
 def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     mountpoint = ipart_data['mountpoint']
 
     force_all_rw(mountpoint)
 
-    adfs = mountpoint_find_files(mountpoint, '*.adf')
+    iadf = get_mountpoint_adf(ipart_dev, ipart_data, force_file_pathname)
 
-    if not adfs:
+    if not iadf:
         return False
-
-    if force_file_pathname and force_file_pathname in adfs:
-        iadf = force_file_pathname
-    else:
-        if not is_medium_floppy_auto_insert_adf(ipart_data):
-            return False
-
-        default_adf = get_medium_floppy_default_adf(ipart_data)
-
-        if default_adf:
-            iadf = default_adf
-        else:
-            iadf = adfs[0]
 
     index = get_label_floppy_index(ipart_data['label'])
 
