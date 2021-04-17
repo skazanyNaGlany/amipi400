@@ -1251,7 +1251,12 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
         if not is_medium_floppy_auto_insert_adf(ipart_data):
             return False
 
-        iadf = adfs[0]
+        default_adf = get_medium_floppy_default_adf(ipart_data)
+
+        if default_adf:
+            iadf = default_adf
+        else:
+            iadf = adfs[0]
 
     index = get_label_floppy_index(ipart_data['label'])
 
@@ -1363,6 +1368,22 @@ def is_medium_floppy_auto_insert_adf(medium_data):
         return True
 
     return medium_data['config']['config'].getboolean('auto_insert_adf')
+
+
+def get_medium_floppy_default_adf(medium_data):
+    if not medium_data['config']:
+        return None
+
+    if 'config' not in medium_data['config']:
+        return None
+
+    if 'default_adf' not in medium_data['config']['config']:
+        return None
+
+    return os.path.realpath(os.path.join(
+        medium_data['mountpoint'],
+        medium_data['config']['config']['default_adf']
+    ))
 
 
 def is_emulator_running():
