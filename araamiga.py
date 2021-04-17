@@ -1248,7 +1248,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     if force_file_pathname and force_file_pathname in adfs:
         iadf = force_file_pathname
     else:
-        if not is_medium_floppy_auto_insert(ipart_data):
+        if not is_medium_floppy_auto_insert_adf(ipart_data):
             return False
 
         iadf = adfs[0]
@@ -1343,26 +1343,26 @@ def get_medium_partition_label(medium_data):
     if not medium_data['config']:
         return None
 
-    if 'partition' not in medium_data['config']:
+    if 'config' not in medium_data['config']:
         return None
 
-    if 'label' not in medium_data['config']['partition']:
+    if 'label' not in medium_data['config']['config']:
         return None
 
-    return medium_data['config']['partition']['label']
+    return medium_data['config']['config']['label']
 
 
-def is_medium_floppy_auto_insert(medium_data):
+def is_medium_floppy_auto_insert_adf(medium_data):
     if not medium_data['config']:
         return True
 
-    if 'floppy' not in medium_data['config']:
+    if 'config' not in medium_data['config']:
         return True
 
-    if 'auto_insert' not in medium_data['config']['floppy']:
+    if 'auto_insert_adf' not in medium_data['config']['config']:
         return True
 
-    return medium_data['config']['floppy'].getboolean('auto_insert')
+    return medium_data['config']['config'].getboolean('auto_insert_adf')
 
 
 def is_emulator_running():
