@@ -44,7 +44,7 @@ index f70dfbc0..e9ab3ba6 100644
  OBJS += src/osdep/gui/androidsdl_event.o \
 diff --git a/src/araamiga/consts.h b/src/araamiga/consts.h
 new file mode 100644
-index 00000000..a4f21f5b
+index 00000000..5f5310a2
 --- /dev/null
 +++ b/src/araamiga/consts.h
 @@ -0,0 +1,8 @@
@@ -53,7 +53,7 @@ index 00000000..a4f21f5b
 +
 +#define TMP_INI_FILE "amiberry.tmp.ini"
 +#define APP_NAME "ARAAMIGA"
-+#define BUFFER_LEN 255
++#define LINE_BUFFER_LEN 255
 +
 +#endif  // ARAAMIGA_CONSTS_H_
 diff --git a/src/araamiga/externals.h b/src/araamiga/externals.h
@@ -121,10 +121,10 @@ index 00000000..d276f220
 +#endif  // ARAAMIGA_HANDLER_H_
 diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
 new file mode 100644
-index 00000000..e1688a61
+index 00000000..49c0356c
 --- /dev/null
 +++ b/src/araamiga/ini-exec.cpp
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,147 @@
 +#include <string>
 +#include <cstring>
 +#include <fstream>
@@ -137,7 +137,8 @@ index 00000000..e1688a61
 +#include "utils.h"
 +
 +
-+char cfg_line_buffer[BUFFER_LEN];
++char cfg_line_buffer[LINE_BUFFER_LEN];
++char disk_insert_force_buffer[LINE_BUFFER_LEN];
 +
 +
 +int execute_ini_file(const std::string &pathname) {
@@ -192,9 +193,16 @@ index 00000000..e1688a61
 +        return;
 +    }
 +
++    memset(disk_insert_force_buffer, 0, LINE_BUFFER_LEN);
++    strncpy(
++        disk_insert_force_buffer,
++        parts[1].c_str(),
++        LINE_BUFFER_LEN
++    );
++
 +    disk_insert_force(
 +        atoi(parts[0].c_str()),
-+        parts[1].c_str(),
++        disk_insert_force_buffer,
 +        atoi(parts[2].c_str())
 +    );
 +}
@@ -245,11 +253,11 @@ index 00000000..e1688a61
 +        uae_quit();
 +    }
 +    else if (string_starts_with(raw_command, "cfgfile_parse_line_type_all ")) {
-+        memset(cfg_line_buffer, BUFFER_LEN, 0);
++        memset(cfg_line_buffer, 0, LINE_BUFFER_LEN);
 +        strncpy(
 +            cfg_line_buffer,
-+            string_cut_from_string(raw_command, " ").c_str(), 
-+            BUFFER_LEN
++            string_cut_from_string(raw_command, " ").c_str(),
++            LINE_BUFFER_LEN
 +        );
 +
 +        cfgfile_parse_line(
