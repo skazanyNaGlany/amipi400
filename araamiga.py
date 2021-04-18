@@ -1220,9 +1220,14 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
 
     floppies[index] = None
 
-    put_command('disk_eject {index}'.format(
+    put_command('cfgfile_parse_line_type_all floppy{index}='.format(
         index=index
     ))
+    put_command('config_changed 1')
+
+    # put_command('disk_eject {index}'.format(
+    #     index=index
+    # ))
 
     if auto_commit:
         # some games like Dreamweb will fail to detect
@@ -1289,10 +1294,17 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
             'medium': ipart_data
         }
 
-        put_command('disk_insert_force {df_no},{pathname},0'.format(
-            df_no=index,
+        put_command('cfgfile_parse_line_type_all floppy{index}={pathname}'.format(
+            index=index,
             pathname=iadf
         ))
+
+        put_command('config_changed 1')
+
+        # put_command('disk_insert_force {df_no},{pathname},0'.format(
+        #     df_no=index,
+        #     pathname=iadf
+        # ))
 
         return True
     else:
