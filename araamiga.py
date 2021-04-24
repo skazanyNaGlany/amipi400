@@ -47,6 +47,9 @@ ENABLE_INTERNAL_DRIVE = True
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
 ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
+ENABLE_AUDIO_LAG_FIX = True
+AUDIO_LAG_STEP_0_SECS = 30
+AUDIO_LAG_STEP_1_SECS = 6
 EMULATOR_EXE_PATHNAMES = [
     'amiberry',
     '../amiberry/amiberry'
@@ -99,6 +102,8 @@ monitor_off_seconds = 0
 external_mounted_processed = False
 floppy_disk_in_drive_volume = 0
 floppy_empty_drive_volume = 0
+audio_lag_fix_step = 0
+audio_lag_fix_ts = 0
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -536,6 +541,62 @@ def other_actions():
     if ENABLE_LOGGER:
         # logger enabled so clear the console
         os.system('clear')
+
+
+def reset_audio_lag_fix():
+    global audio_lag_fix_step
+    global audio_lag_fix_ts
+
+    audio_lag_fix_step = 0
+    audio_lag_fix_ts = 0
+
+
+def audio_lag_fix():
+    global audio_lag_fix_step
+    global audio_lag_fix_ts
+
+    if not ENABLE_AUDIO_LAG_FIX or audio_lag_fix_step == 2:
+        # audio lag fix not enabled or already applied
+        return
+
+    current_ts = int(time.time())
+
+    if not audio_lag_fix_ts:
+        # timestamp not set, use current
+        # and return, so we will process it again
+        # after 1 second
+        audio_lag_fix_ts = current_ts
+
+        return
+
+    applied = False
+
+    if audio_lag_fix_step == 0:
+        if current_ts - audio_lag_fix_ts <= AUDIO_LAG_STEP_0_SECS:
+            return
+
+        put_command('cfgfile_parse_line_type_all amiberry.sound_pullmode=1')
+        put_command('cfgfile_parse_line_type_all sound_max_buff=8192')
+        put_command('config_changed 1')
+
+        audio_lag_fix_step += 1
+        audio_lag_fix_ts = current_ts
+        applied = True
+    elif audio_lag_fix_step == 1:
+        if current_ts - audio_lag_fix_ts <= AUDIO_LAG_STEP_1_SECS:
+            return
+
+        put_command('cfgfile_parse_line_type_all sound_max_buff=16384')
+        put_command('config_changed 1')
+
+        audio_lag_fix_step += 1
+        audio_lag_fix_ts = current_ts
+        applied = True
+
+    if applied:
+        print('Apply audio lag fix, step={step}'.format(
+            step=audio_lag_fix_step - 1
+        ))
 
 
 def get_partitions2() -> OrderedDict:
@@ -1816,9 +1877,11 @@ while True:
 
     if is_emulator_running() == False:
         run_emulator()
+        reset_audio_lag_fix()
 
     keyboard_actions(partitions)
     update_monitor_state()
     other_actions()
+    audio_lag_fix()
 
     time.sleep(1)
