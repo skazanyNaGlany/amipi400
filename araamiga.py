@@ -302,7 +302,6 @@ def ctrl_alt_del_keyboard_action():
         ctrl_alt_del_press_ts = int(time.time())
 
         put_command('uae_reset 0,0')
-        clear_system_cache()
     elif not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
         ctrl_alt_del_press_ts = 0
 
@@ -1376,14 +1375,6 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     return False
 
 
-def clear_system_cache(force = False):
-    print_log('Clearing system cache')
-
-    os.system('sync')
-    os.system('echo 1 > /proc/sys/vm/drop_caches')
-    os.system('sync')
-
-
 def put_local_commit_command(sleep_seconds: int = 0):
     put_command('local-commit')
 
@@ -1830,8 +1821,6 @@ configure_volumes()
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
 
-clear_system_cache(True)
-
 while True:
     unmounted = []
     new_mounted = []
@@ -1864,8 +1853,6 @@ while True:
         print_attached_floppies()
         print_attached_hard_disks()
 
-        clear_system_cache()
-
     old_partitions = partitions
 
     process_changed_drives()
@@ -1873,7 +1860,6 @@ while True:
     if commands:
         print_commands()
         execute_commands()
-        clear_system_cache()
 
     if is_emulator_running() == False:
         run_emulator()
