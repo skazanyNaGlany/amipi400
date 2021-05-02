@@ -44,15 +44,16 @@ index f70dfbc0..e9ab3ba6 100644
  OBJS += src/osdep/gui/androidsdl_event.o \
 diff --git a/src/araamiga/consts.h b/src/araamiga/consts.h
 new file mode 100644
-index 00000000..5f5310a2
+index 00000000..07a27dfd
 --- /dev/null
 +++ b/src/araamiga/consts.h
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,9 @@
 +#ifndef ARAAMIGA_CONSTS_H_
 +#define ARAAMIGA_CONSTS_H_
 +
 +#define TMP_INI_FILE "amiberry.tmp.ini"
 +#define APP_NAME "ARAAMIGA"
++#define APP_VERSION "0.1"
 +#define LINE_BUFFER_LEN 255
 +
 +#endif  // ARAAMIGA_CONSTS_H_
@@ -77,13 +78,14 @@ index 00000000..20bf5613
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
 new file mode 100644
-index 00000000..538a68f4
+index 00000000..a6e4ca11
 --- /dev/null
 +++ b/src/araamiga/handler.cpp
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,26 @@
 +#include "consts.h"
 +#include "handler.h"
 +#include "ini-exec.h"
++#include "utils.h"
 +
 +#include <stdio.h>
 +#include <signal.h>
@@ -92,18 +94,18 @@ index 00000000..538a68f4
 +
 +void SIGUSR1_handler(int signum)
 +{
-+    printf("[%s] received SIGUSR1 signal\n", APP_NAME);
++    my_printf("processing received SIGUSR1 signal\n");
 +
 +    execute_ini_file(TMP_INI_FILE);
 +    remove(TMP_INI_FILE);
 +
-+    printf("[%s] done processing signal\n", APP_NAME);
++    my_printf("done processing signal\n");
 +}
 +
 +
 +void araamiga_handler_init() {
 +    if (signal(SIGUSR1, SIGUSR1_handler) == SIG_ERR) {
-+        printf("[%s] failed to set signal handler (SIGUSR1)\n", APP_NAME);
++        my_printf("failed to set signal handler (SIGUSR1)\n");
 +    }
 +}
 diff --git a/src/araamiga/handler.h b/src/araamiga/handler.h
@@ -121,7 +123,7 @@ index 00000000..d276f220
 +#endif  // ARAAMIGA_HANDLER_H_
 diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
 new file mode 100644
-index 00000000..49c0356c
+index 00000000..5d03930d
 --- /dev/null
 +++ b/src/araamiga/ini-exec.cpp
 @@ -0,0 +1,147 @@
@@ -146,10 +148,10 @@ index 00000000..49c0356c
 +    std::string line;
 +    bool commands_mode = false;
 +
-+    printf("[%s] executing temporary INI file\n", APP_NAME);
++    my_printf("executing temporary INI file\n");
 +
 +    if (!file.is_open()) {
-+        printf("[%s] cannot open INI file\n", APP_NAME);
++        my_printf("cannot open INI file\n");
 +        return 1;
 +    }
 +
@@ -189,7 +191,7 @@ index 00000000..49c0356c
 +    parts = string_split(command_data, ',');
 +
 +    if (parts.size() != 3) {
-+        printf("[%s] skip wrong formatted command: %s\n", APP_NAME, command_data.c_str());
++        my_printf("skip wrong formatted command: %s\n", command_data.c_str());
 +        return;
 +    }
 +
@@ -214,7 +216,7 @@ index 00000000..49c0356c
 +    parts = string_split(command_data, ',');
 +
 +    if (parts.size() != 2) {
-+        printf("[%s] skip wrong formatted command: %s\n", APP_NAME, command_data.c_str());
++        my_printf("skip wrong formatted command: %s\n", command_data.c_str());
 +        return;
 +    }
 +
@@ -238,7 +240,7 @@ index 00000000..49c0356c
 +
 +    raw_command = string_cut_from_string(command, "=");
 +
-+    printf("[%s] raw command: %s\n", APP_NAME, raw_command.c_str());
++    my_printf("raw command: %s\n", raw_command.c_str());
 +
 +    if (string_starts_with(raw_command, "disk_eject ")) {
 +        disk_eject(atoi(string_cut_from_string(raw_command, " ").c_str()));
@@ -292,15 +294,19 @@ index 00000000..ead19c18
 +#endif  // ARAAMIGA_INI_EXEC_H_
 diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
 new file mode 100644
-index 00000000..4f76a12a
+index 00000000..ee8f4ace
 --- /dev/null
 +++ b/src/araamiga/utils.cpp
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,96 @@
 +#include <iostream>
 +#include <sstream>
 +#include <vector>
 +
++#include <stdio.h>
++#include <stdarg.h>
++
 +#include "utils.h"
++#include "consts.h"
 +
 +
 +std::string string_ltrim(const std::string& str, const std::string& chars)
@@ -374,12 +380,26 @@ index 00000000..4f76a12a
 +
 +    return result;
 +}
++
++
++void my_printf(const char *fmt, ...) {
++    char buffer[LINE_BUFFER_LEN];
++    va_list args;
++
++    va_start(args, fmt);
++
++    vsprintf(buffer, fmt, args);
++    printf("[%s v%s] %s", APP_NAME, APP_VERSION, buffer);
++
++    va_end(args);
++}
++
 diff --git a/src/araamiga/utils.h b/src/araamiga/utils.h
 new file mode 100644
-index 00000000..d16e01a2
+index 00000000..59f36c29
 --- /dev/null
 +++ b/src/araamiga/utils.h
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,23 @@
 +#ifndef ARAAMIGA_UTILS_H_
 +#define ARAAMIGA_UTILS_H_
 +
@@ -399,6 +419,8 @@ index 00000000..d16e01a2
 +std::string string_cut_from_string(const std::string& str, const std::string str2);
 +
 +std::vector<std::string> string_split(const std::string &s, char delim);
++
++void my_printf(const char *fmt, ...);
 +
 +#endif  // ARAAMIGA_UTILS_H_
 diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp

@@ -34,6 +34,7 @@ except ImportError as xie:
 
 
 APP_UNIXNAME = 'araamiga'
+APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 DEVS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'dev')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
@@ -124,6 +125,13 @@ def init_logger():
     print('Logging to ' + LOG_PATHNAME)
 
     logzero.logfile(LOG_PATHNAME, maxBytes=1e6, backupCount=3, disableStderrLogger=True)
+
+
+def print_app_version():
+    print('{name} v{version} control script'. format(
+        name=APP_UNIXNAME.upper(),
+        version=APP_VERSION
+    ))
 
 
 def check_pre_requirements():
@@ -1833,6 +1841,7 @@ def on_key_release(key):
         tab_pressed = False
 
 
+print_app_version()
 init_logger()
 check_pre_requirements()
 configure_tmp_ini()
