@@ -430,6 +430,20 @@ index dc1e4210..1e064ea5 100644
  	}
  
  #ifdef GFXFILTER
+diff --git a/src/inputdevice.cpp b/src/inputdevice.cpp
+index 0ca6b6c8..5d6e5949 100644
+--- a/src/inputdevice.cpp
++++ b/src/inputdevice.cpp
+@@ -4487,7 +4487,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
+ 	//	NMI_delayed();
+ 		break;
+ 	case AKS_PAUSE:
+-		pausemode(newstate > 0 ? 1 : newstate);
++		// disable pausing by pause/break key
++		// pausemode(newstate > 0 ? 1 : newstate);
+ 		break;
+ 	case AKS_SINGLESTEP:
+ 		if (pause_emulation)
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
 index cd700f24..8c2ee1dd 100644
 --- a/src/osdep/amiberry.cpp
