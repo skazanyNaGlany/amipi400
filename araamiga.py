@@ -93,6 +93,7 @@ key_delete_pressed = False
 ctrl_alt_del_press_ts = 0
 tab_combo = []
 tab_combo_recording = False
+tab_pressed = False
 emulator_exe_pathname = None
 emulator_tmp_ini_pathname = None
 kickstart_pathname = None
@@ -534,6 +535,17 @@ def tab_combo_actions(partitions: dict):
 def keyboard_actions(partitions: dict):
     ctrl_alt_del_keyboard_action()
     tab_combo_actions(partitions)
+
+
+def tab_shell():
+    if not tab_pressed:
+        return
+
+    print_log('')
+    print_log('Enter system shell')
+
+    os.system('/bin/sh')
+    sys.exit(1)
 
 
 def other_actions():
@@ -1774,6 +1786,7 @@ def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_delete_pressed
+    global tab_pressed
     global ctrl_alt_del_press_ts
     global tab_combo
     global tab_combo_recording
@@ -1786,6 +1799,9 @@ def on_key_press(key):
 
     if key == Key.delete:
         key_delete_pressed = True
+
+    if key == Key.tab:
+        tab_pressed = True
 
     if key == Key.esc:
         tab_combo = []
@@ -1800,6 +1816,7 @@ def on_key_release(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_delete_pressed
+    global tab_pressed
     global ctrl_alt_del_press_ts
 
     if key == Key.ctrl:
@@ -1811,6 +1828,9 @@ def on_key_release(key):
     if key == Key.delete:
         key_delete_pressed = False
 
+    if key == Key.tab:
+        tab_pressed = False
+
 
 init_logger()
 check_pre_requirements()
@@ -1820,6 +1840,11 @@ configure_volumes()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
+
+# give the user one second so he can press
+# TAB key to enter system shell
+time.sleep(1)
+tab_shell()
 
 while True:
     unmounted = []
