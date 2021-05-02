@@ -217,7 +217,8 @@ def check_system_binaries():
         'sysctl',
         'swapoff',
         'xset',
-        'clear'
+        'clear',
+        'sh'
     ]
 
     for ibin in bins:
