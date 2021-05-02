@@ -78,10 +78,10 @@ index 00000000..20bf5613
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
 new file mode 100644
-index 00000000..a6e4ca11
+index 00000000..e9c32524
 --- /dev/null
 +++ b/src/araamiga/handler.cpp
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,35 @@
 +#include "consts.h"
 +#include "handler.h"
 +#include "ini-exec.h"
@@ -92,8 +92,17 @@ index 00000000..a6e4ca11
 +#include <unistd.h>
 +
 +
++bool print_version = true;
++
++
 +void SIGUSR1_handler(int signum)
 +{
++    if (print_version) {
++        my_printf("v%s\n", APP_VERSION);
++
++        print_version = false;
++    }
++
 +    my_printf("processing received SIGUSR1 signal\n");
 +
 +    execute_ini_file(TMP_INI_FILE);
@@ -294,7 +303,7 @@ index 00000000..ead19c18
 +#endif  // ARAAMIGA_INI_EXEC_H_
 diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
 new file mode 100644
-index 00000000..ee8f4ace
+index 00000000..c536b06e
 --- /dev/null
 +++ b/src/araamiga/utils.cpp
 @@ -0,0 +1,96 @@
@@ -389,7 +398,7 @@ index 00000000..ee8f4ace
 +    va_start(args, fmt);
 +
 +    vsprintf(buffer, fmt, args);
-+    printf("[%s v%s] %s", APP_NAME, APP_VERSION, buffer);
++    printf("[%s] %s", APP_NAME, buffer);
 +
 +    va_end(args);
 +}
