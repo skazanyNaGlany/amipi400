@@ -51,6 +51,7 @@ ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
 ENABLE_AUDIO_LAG_FIX = True
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
+SYNC_DISKS_SECS = 60 * 3
 EMULATOR_EXE_PATHNAMES = [
     'amiberry',
     '../amiberry/amiberry'
@@ -106,6 +107,8 @@ floppy_disk_in_drive_volume = 0
 floppy_empty_drive_volume = 0
 audio_lag_fix_step = 0
 audio_lag_fix_ts = 0
+sync_disks_ts = 0
+sync_process = None
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -617,6 +620,41 @@ def audio_lag_fix():
         print('Apply audio lag fix, step={step}'.format(
             step=audio_lag_fix_step - 1
         ))
+
+
+def is_sync_running() -> bool:
+    global sync_process
+
+    if not sync_process:
+        return False
+
+    if sync_process.poll() is None:
+        return True
+
+    sync_process = None
+
+    return False
+
+
+def sync():
+    global sync_disks_ts
+    global sync_process
+
+    if is_sync_running():
+        return
+
+    current_ts = int(time.time())
+
+    if not sync_disks_ts:
+        sync_disks_ts = current_ts
+
+    if current_ts - sync_disks_ts < SYNC_DISKS_SECS:
+        return
+
+    print_log('Syncing disks')
+
+    sync_process = subprocess.Popen('sync')
+    sync_disks_ts = current_ts
 
 
 def get_partitions2() -> OrderedDict:
@@ -1905,5 +1943,6 @@ while True:
     update_monitor_state()
     other_actions()
     audio_lag_fix()
+    sync()
 
     time.sleep(1)
