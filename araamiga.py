@@ -624,6 +624,7 @@ def get_partitions2() -> OrderedDict:
     pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)"'
     ret = OrderedDict()
 
+    # lsblk -P -o name,size,type,mountpoint,label -n
     sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label', '-n', _out=lsblk_buf)
 
     for line in lsblk_buf.getvalue().splitlines():
