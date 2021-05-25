@@ -619,7 +619,7 @@ def audio_lag_fix():
         applied = True
 
     if applied:
-        print('Apply audio lag fix, step={step}'.format(
+        print_log('Apply audio lag fix, step={step}'.format(
             step=audio_lag_fix_step - 1
         ))
 
@@ -1055,7 +1055,7 @@ def force_mount(device: str, pathname: str) -> bool:
         return True
     except Exception as x:
         print_log(str(x))
-        print('Unable to mount ' + device)
+        print_log('Unable to mount ' + device)
 
         if ENABLE_FORCE_FSCK == 'auto':
             force_fsck(device, True)
@@ -1066,7 +1066,7 @@ def force_mount(device: str, pathname: str) -> bool:
                 return True
             except Exception as x2:
                 print_log(str(x2))
-                print('Unable to mount ' + device)
+                print_log('Unable to mount ' + device)
 
         return False
 
@@ -1076,7 +1076,7 @@ def force_fsck(pathname: str, force: bool = False):
         return
 
     try:
-        print('Checking ' + pathname + ' for errors (fsck)')
+        print_log('Checking ' + pathname + ' for errors (fsck)')
 
         sh.fsck('-y', pathname)
     except (sh.ErrorReturnCode_1, sh.ErrorReturnCode_6) as x:
