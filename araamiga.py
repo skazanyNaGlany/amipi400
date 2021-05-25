@@ -49,6 +49,8 @@ ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
 ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
 ENABLE_AUDIO_LAG_FIX = True
+ENABLE_FORCE_FSCK = 'auto'
+ENABLE_FORCE_RW = False
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -878,13 +880,10 @@ def mount_partitions(partitions: dict) -> list:
             not is_hard_file_label(value['label']):
             continue
 
-        print_log('Mounting ' + key + ' as ' + value['internal_mountpoint'])
-
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         force_fsck(key)
-        sh.mount(key, '-ouser,umask=0000,sync,noatime', value['internal_mountpoint'])
-
+        force_mount(key, value['internal_mountpoint'])
         force_all_rw(value['internal_mountpoint'])
 
         partitions[key]['mountpoint'] = value['internal_mountpoint']
@@ -1045,8 +1044,40 @@ def force_umount(pathname: str):
         print_log('Failed to force-umount ' + pathname + ', maybe it is umounted already')
 
 
-def force_fsck(pathname: str):
+def force_mount(device: str, pathname: str) -> bool:
+    options = '-ouser,umask=0000,sync,noatime'
+
+    print_log('Mounting ' + device + ' as ' + pathname)
+
     try:
+        sh.mount(device, options, pathname)
+
+        return True
+    except Exception as x:
+        print_log(str(x))
+        print('Unable to mount ' + device)
+
+        if ENABLE_FORCE_FSCK == 'auto':
+            force_fsck(device, True)
+
+            try:
+                sh.mount(device, options, pathname)
+
+                return True
+            except Exception as x2:
+                print_log(str(x2))
+                print('Unable to mount ' + device)
+
+        return False
+
+
+def force_fsck(pathname: str, force: bool = False):
+    if (not ENABLE_FORCE_FSCK or ENABLE_FORCE_FSCK == 'auto') and not force:
+        return
+
+    try:
+        print('Checking ' + pathname + ' for errors (fsck)')
+
         sh.fsck('-y', pathname)
     except (sh.ErrorReturnCode_1, sh.ErrorReturnCode_6) as x:
         print_log(str(x))
@@ -1054,6 +1085,9 @@ def force_fsck(pathname: str):
 
 
 def force_all_rw(pathname: str):
+    if not ENABLE_FORCE_RW:
+        return
+
     try:
         sh.chmod('-R', 'a+rw', pathname)
     except sh.ErrorReturnCode_1 as x1:
