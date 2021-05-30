@@ -63,9 +63,9 @@ MAX_FLOPPIES = 1
 MAX_DRIVES = 6
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
 KICKSTART_PATHNAMES = [
-    '/boot/araamiga/kickstarts/Kickstart3.1.rom',
-    '../amiberry/kickstarts/Kickstart3.1.rom',
-    'kickstarts/Kickstart3.1.rom',
+    '/boot/araamiga/kickstarts/*.rom',
+    '../amiberry/kickstarts/*.rom',
+    'kickstarts/*.rom',
 ]
 # stock Amiga 1200
 # EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
@@ -197,15 +197,15 @@ def check_kickstart():
     print_log('Checking kickstart')
 
     for ipathname in KICKSTART_PATHNAMES:
-        irealpath = os.path.realpath(ipathname)
+        paths = glob.glob(ipathname)
 
-        if os.path.exists(irealpath):
-            kickstart_pathname = irealpath
+        if paths:
+            kickstart_pathname = paths[0]
 
             break
 
     if not kickstart_pathname:
-        print_log('Kickstart does not exists, checked {paths}'.format(
+        print_log('Kickstart ROM does not exists, checked {paths}'.format(
             paths=', '.join(KICKSTART_PATHNAMES)
         ))
 
