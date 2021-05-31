@@ -44,6 +44,7 @@ INTERNAL_DRIVE_BOOT_PRIORITY = -128     # -128 means not bootable
 FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 20
 FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
 ENABLE_FLOPPY_DRIVE_SOUND = 'auto'
+ENABLE_HARD_DRIVES = True
 ENABLE_INTERNAL_DRIVE = True
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
@@ -1695,26 +1696,27 @@ def get_media_command_line_config():
     drive_index = 0
     str_drives = ''
 
-    for index, idrive in enumerate(drives):
-        if idrive:
-            if idrive['is_dir']:
-                drive_config = get_dir_drive_config_command_line(drive_index, idrive)
+    if ENABLE_HARD_DRIVES:
+        for index, idrive in enumerate(drives):
+            if idrive:
+                if idrive['is_dir']:
+                    drive_config = get_dir_drive_config_command_line(drive_index, idrive)
 
-                str_drives += ' -s {config0} -s {config1} '.format(
-                    config0=drive_config[0],
-                    config1=drive_config[1]
-                )
+                    str_drives += ' -s {config0} -s {config1} '.format(
+                        config0=drive_config[0],
+                        config1=drive_config[1]
+                    )
 
-                drive_index += 1
-            elif idrive['is_hdf']:
-                drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
+                    drive_index += 1
+                elif idrive['is_hdf']:
+                    drive_config = get_hdf_drive_config_command_line(drive_index, idrive)
 
-                str_drives += ' -s {config0} -s {config1} '.format(
-                    config0=drive_config[0],
-                    config1=drive_config[1]
-                )
+                    str_drives += ' -s {config0} -s {config1} '.format(
+                        config0=drive_config[0],
+                        config1=drive_config[1]
+                    )
 
-                drive_index += 1
+                    drive_index += 1
 
     if ENABLE_INTERNAL_DRIVE and drive_index < MAX_DRIVES:
         # add read-only internal drive
