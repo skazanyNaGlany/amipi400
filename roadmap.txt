@@ -1,6 +1,6 @@
 1. When mounted empty (no .adf files) ARA_DF0 (0-4) partition - create empty .adf 
 file; customization by ENABLE_CREATE_ADF option
-2. Ability to load extended rom file (for CD32)
-3. Ability to load .iso file from ARA_CD0 (0-4) ad cdimage0 config option; same feature
+2. DONE: Ability to load extended rom file (for CD32)
+3. Ability to load .iso file from ARA_CD0 (0-4) and cdimage0 config option; same feature
 as loading .adf file(s) from ARA_DF0
 4. Amiga CD32 support
