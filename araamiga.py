@@ -69,11 +69,11 @@ KICKSTART_PATHNAMES = [
     'kickstarts/*.rom',
 ]
 # stock Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {extended_kickstart} {floppies} {drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {extended_kickstart} {floppies} {drives}'
 # fastest
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {extended_kickstart} {floppies} {drives}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
@@ -102,6 +102,7 @@ tab_pressed = False
 emulator_exe_pathname = None
 emulator_tmp_ini_pathname = None
 kickstart_pathname = None
+kickstart_extended_pathname = None
 monitor_off_timestamp = 0
 monitor_state = MONITOR_STATE_ON
 monitor_off_seconds = 0
@@ -143,6 +144,7 @@ def print_app_version():
 def check_pre_requirements():
     check_emulator()
     check_kickstart()
+    check_extended_kickstart()
     check_system_binaries()
 
 
@@ -206,13 +208,34 @@ def check_kickstart():
             break
 
     if not kickstart_pathname:
-        print_log('Kickstart ROM does not exists, checked {paths}'.format(
-            paths=', '.join(KICKSTART_PATHNAMES)
+        print_log('Kickstart ROM does not exists, checked:\n{paths}'.format(
+            paths='\n'.join(KICKSTART_PATHNAMES)
         ))
 
         sys.exit(1)
 
     print_log('Kickstart: ' + kickstart_pathname)
+
+
+def check_extended_kickstart():
+    global kickstart_extended_pathname
+
+    print_log('Checking extended kickstart')
+
+    for ipathname in KICKSTART_EXTENDED_PATHNAMES:
+        paths = glob.glob(ipathname)
+
+        if paths:
+            kickstart_extended_pathname = paths[0]
+
+            break
+
+    if not kickstart_extended_pathname:
+        print_log('Extended kickstart ROM does not exists, checked:\n{paths}'.format(
+            paths='\n'.join(KICKSTART_EXTENDED_PATHNAMES)
+        ))
+    else:
+        print_log('Extended kickstart: ' + kickstart_extended_pathname)
 
 
 def check_system_binaries():
@@ -1833,6 +1856,17 @@ def get_emulator_command_line_config():
     return config_str
 
 
+def get_ext_kickstart_command_line_config():
+    extended_kickstart = ''
+
+    if kickstart_extended_pathname:
+        extended_kickstart = '-K "{pathname}"'.format(
+            pathname=kickstart_extended_pathname
+        )
+
+    return extended_kickstart
+
+
 def run_emulator():
     global floppies
 
@@ -1840,12 +1874,14 @@ def run_emulator():
 
     media_config = get_media_command_line_config()
     config_options = get_emulator_command_line_config()
+    extended_kickstart = get_ext_kickstart_command_line_config()
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=emulator_exe_pathname,
         nr_floppies=MAX_FLOPPIES,
         config_options=config_options,
         kickstart=kickstart_pathname,
+        extended_kickstart=extended_kickstart,
         floppies=media_config['floppies'],
         drives=media_config['drives']
     )
