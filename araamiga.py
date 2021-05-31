@@ -68,6 +68,11 @@ KICKSTART_PATHNAMES = [
     '../amiberry/kickstarts/*.rom',
     'kickstarts/*.rom',
 ]
+KICKSTART_EXTENDED_PATHNAMES = [
+    '/boot/araamiga/kickstarts/extended/*.rom',
+    '../amiberry/kickstarts/extended/*.rom',
+    'kickstarts/extended/*.rom',
+]
 # stock Amiga 1200
 # EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r {kickstart} {extended_kickstart} {floppies} {drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
