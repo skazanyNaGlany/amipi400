@@ -1858,6 +1858,12 @@ def get_emulator_command_line_config():
     for ioption in get_floppy_drive_sound_config_options():
         config_str += ' -s ' + ioption + ' '
 
+    if ' -m CD32 ' in EMULATOR_RUN_PATTERN:
+        # HACK we need to add finegrain_cpu_speed=1024
+        # in order to emulate CD32
+        # maybe it is a bug in the emulator?
+        config_str += ' -s finegrain_cpu_speed=1024 '
+
     return config_str
 
 
