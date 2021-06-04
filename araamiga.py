@@ -95,6 +95,7 @@ HDF_TYPE_DISKIMAGE = 2
 HDF_TYPE_HDF  = 5
 FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso']
+HARD_FILE_EXTENSIONS = ['*.hdf']
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -1482,7 +1483,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 
     force_all_rw(mountpoint)
 
-    hdfs = mountpoint_find_files(mountpoint, ['*.hdf'])
+    hdfs = mountpoint_find_files(mountpoint, HARD_FILE_EXTENSIONS)
 
     if not hdfs:
         return False
