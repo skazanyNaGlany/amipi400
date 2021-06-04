@@ -96,6 +96,7 @@ HDF_TYPE_HDF  = 5
 FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso']
 HARD_FILE_EXTENSIONS = ['*.hdf']
+CD_REPLACE_RESTART = True
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -1642,6 +1643,7 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
 
 def detach_cd(index: int, auto_commit: bool = False) -> dict:
     global cd_drives
+    global drives_changed
 
     cd_data = cd_drives[index]
 
@@ -1667,6 +1669,9 @@ def detach_cd(index: int, auto_commit: bool = False) -> dict:
         # using "commit" local command:
         # eject, sleep 1 second, insert
         put_local_commit_command(1)
+
+    if CD_REPLACE_RESTART:
+        drives_changed = True
 
     return cd_data
 
@@ -1758,6 +1763,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
 
 def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_pathname: str = None):
     global cd_drives
+    global drives_changed
 
     mountpoint = ipart_data['mountpoint']
 
@@ -1794,6 +1800,9 @@ def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_path
             'config': ipart_data['config'],
             'medium': ipart_data
         }
+
+        if CD_REPLACE_RESTART:
+            drives_changed = True
 
         put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
             index=index,
