@@ -349,7 +349,8 @@ def ctrl_alt_del_keyboard_action():
 
         ctrl_alt_del_press_ts = int(time.time())
 
-        put_command('uae_reset 0,0')
+        put_command('uae_reset 1,1')
+        # put_command('uae_reset 0,0')
     elif not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
         ctrl_alt_del_press_ts = 0
 
