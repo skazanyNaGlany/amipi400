@@ -23,7 +23,7 @@ try:
 
     from pprint import pprint
     from collections import OrderedDict
-    from typing import Optional
+    from typing import Optional, List
     from io import StringIO
     from pynput.keyboard import Key, Listener
     from configparser import ConfigParser
@@ -62,6 +62,7 @@ EMULATOR_EXE_PATHNAMES = [
 EMULATOR_TMP_INI_NAME = 'amiberry.tmp.ini'
 MAX_FLOPPIES = 1
 MAX_DRIVES = 6
+MAX_CD_DRIVES = 1
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
 KICKSTART_PATHNAMES = [
     '/boot/araamiga/kickstarts/*.rom',
@@ -74,11 +75,13 @@ KICKSTART_EXTENDED_PATHNAMES = [
     'kickstarts/extended/*.rom',
 ]
 # stock Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 # fastest Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
+# stock Amiga CD32
+# EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
@@ -92,6 +95,7 @@ HDF_TYPE_HDF  = 5
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
+cd_drives = [None for x in range(MAX_CD_DRIVES)]
 drives_changed = False
 commands = []
 
@@ -387,7 +391,7 @@ def string_unify2(str_to_unify: str, exclude = None) -> str:
 
 
 def find_similar_file_adf(directory, pattern):
-    adfs = mountpoint_find_files(directory, '*.adf')
+    adfs = mountpoint_find_files(directory, ['*.adf'])
 
     if not adfs:
         return None
@@ -412,12 +416,49 @@ def find_similar_file_adf(directory, pattern):
     return None
 
 
+def find_similar_file_cd_image(directory, pattern):
+    cd_images = mountpoint_find_files(directory, ['*.cue', '*.iso'])
+
+    if not cd_images:
+        return None
+
+    for icd in cd_images:
+        basename = os.path.basename(icd)
+        basename_unified = string_unify2(basename)
+
+        if pattern in basename_unified:
+            return icd
+
+        parts = basename_unified.split(' ')
+        pattern_copy = copy.copy(pattern)
+
+        for ipart in parts:
+            if pattern_copy.find(ipart) == 0:
+                pattern_copy = pattern_copy.replace(ipart, '')
+
+                if not pattern_copy:
+                    return icd
+
+    return None
+
+
 def find_floppy_first_mountpoint(partitions: dict, floppy_index: int) -> dict:
     for key, value in partitions.items():
         if not is_floppy_label(value['label']):
             continue
 
         if get_label_floppy_index(value['label']) == floppy_index:
+            return value
+
+    return None
+
+
+def find_cd_first_mountpoint(partitions: dict, cd_index: int) -> dict:
+    for key, value in partitions.items():
+        if not is_cd_label(value['label']):
+            continue
+
+        if get_label_cd_index(value['label']) == cd_index:
             return value
 
     return None
@@ -460,6 +501,40 @@ def process_floppy_replace_action(partitions: dict, action: str):
         update_floppy_drive_sound(idf_index)
 
 
+def process_cd_replace_action(partitions: dict, action: str):
+    icd_index = int(action[2])
+
+    if icd_index + 1 > MAX_CD_DRIVES:
+        return
+
+    detached_cd_data = detach_cd(icd_index)
+    cd_pattern_name = action[3:].strip()
+
+    if not cd_pattern_name:
+        return
+
+    if detached_cd_data:
+        medium = detached_cd_data['medium']
+    else:
+        medium = find_cd_first_mountpoint(partitions, icd_index)
+
+        if not medium:
+            # should not get here
+            return
+
+    pathname = find_similar_file_cd_image(
+        medium['mountpoint'],
+        cd_pattern_name
+    )
+
+    if not pathname:
+        return
+
+    put_local_commit_command(1)
+
+    attach_mountpoint_cd_image(medium['device'], medium, pathname)
+
+
 def find_similar_roms(rom_path: str) -> list:
     dirname = os.path.dirname(rom_path)
     basename = os.path.basename(rom_path)
@@ -489,6 +564,8 @@ def find_similar_roms(rom_path: str) -> list:
 
 
 def process_floppy_replace_by_index_action(action: str):
+    global floppies
+
     idf_index = int(action[2])
 
     if idf_index + 1 > MAX_FLOPPIES:
@@ -533,9 +610,55 @@ def process_floppy_replace_by_index_action(action: str):
             update_floppy_drive_sound(idf_index)
 
 
+def process_cd_replace_by_index_action(action: str):
+    global cd_drives
+
+    icd_index = int(action[2])
+
+    if icd_index + 1 > MAX_CD_DRIVES:
+        return
+
+    if not cd_drives[icd_index]:
+        return
+
+    action_data = action[3:].strip()
+
+    if not action_data:
+        return
+
+    rom_disk_no = int(action_data)
+    similar_roms = find_similar_roms(cd_drives[icd_index]['pathname'])
+    len_similar_roms = len(similar_roms)
+    to_insert_pathname = None
+
+    for value in similar_roms:
+        rom_sign = '(Disk {index} of {max_index})'.format(
+            index=rom_disk_no,
+            max_index=len_similar_roms
+        )
+
+        if rom_sign in value:
+            to_insert_pathname = value
+
+            break
+
+    if to_insert_pathname:
+        if cd_drives[icd_index]['pathname'] == to_insert_pathname:
+            return
+
+        detached_cd_data = detach_cd(icd_index, True)
+
+        device = detached_cd_data['device']
+        medium = detached_cd_data['medium']
+
+        attach_mountpoint_cd_image(device, medium, to_insert_pathname)
+
+
 def process_tab_combo_action(partitions: dict, action: str):
     len_action = len(action)
 
+    # TODO replace df0, df1, ... with MAX_FLOPPIES
+    # TODO replace cd0, ... with MAX_CD_DRIVES
     if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
         if len_action >= 4 and len_action <= 5:
             process_floppy_replace_by_index_action(action)
@@ -543,6 +666,13 @@ def process_tab_combo_action(partitions: dict, action: str):
             return
 
         process_floppy_replace_action(partitions, action)
+    elif action.startswith('cd0'):
+        if len_action >= 4 and len_action <= 5:
+            process_cd_replace_by_index_action(action)
+
+            return
+
+        process_cd_replace_action(partitions, action)
 
 
 def action_to_str(action: list) -> str:
@@ -769,6 +899,19 @@ def print_attached_floppies():
         ))
 
 
+def print_attached_cd_images():
+    print_log('Attached CD images:')
+
+    for icd_index, icd_data in enumerate(cd_drives):
+        if not icd_data:
+            continue
+
+        print_log('CD{index}: {pathname}'.format(
+            index=icd_index,
+            pathname=icd_data['pathname']
+        ))
+
+
 def print_attached_hard_disks():
     print_log('Attached hard disks:')
 
@@ -906,7 +1049,8 @@ def mount_partitions(partitions: dict) -> list:
 
         if not is_floppy_label(value['label']) and \
             not is_hard_drive_label(value['label']) and \
-            not is_hard_file_label(value['label']):
+            not is_hard_file_label(value['label']) and \
+            not is_cd_label(value['label']):
             continue
 
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
@@ -1039,7 +1183,24 @@ def is_hard_file_label(label: str) -> bool:
     return False
 
 
-def get_label_floppy_index(label: str):
+def is_cd_label(label: str) -> bool:
+    if len(label) != 7:
+        return False
+
+    if not label.startswith('ARA_CD'):
+        return False
+
+    if not label[6].isdigit():
+        return False
+
+    return True
+
+
+def get_label_floppy_index(label: str) -> int:
+    return int(label[6])
+
+
+def get_label_cd_index(label: str) -> int:
     return int(label[6])
 
 
@@ -1124,7 +1285,7 @@ def force_all_rw(pathname: str):
         print_log('Failed to chmod a+rw ' + pathname)
 
 
-def process_new_mounted(partitions: dict, new_mounted: list):
+def process_new_mounted(partitions: dict, new_mounted: list) -> List[str]:
     attached = []
 
     for idevice in new_mounted:
@@ -1146,12 +1307,15 @@ def process_new_mounted(partitions: dict, new_mounted: list):
         elif is_hard_file_label(ipart_data['label']):
             if attach_mountpoint_hard_file(idevice, ipart_data):
                 attached.append(idevice)
+        elif is_cd_label(ipart_data['label']):
+            if attach_mountpoint_cd_image(idevice, ipart_data):
+                attached.append(idevice)
 
     return attached
 
 
 def is_mountpoint_attached(mountpoint: str) -> bool:
-    for imedium in floppies + drives:
+    for imedium in floppies + drives + cd_drives:
         if not imedium:
             continue
 
@@ -1184,6 +1348,31 @@ def process_other_mounted_floppy(partitions: dict):
                     drive_index
                 )
 
+                attached.append(ipart_dev)
+                attached_indexes.append(drive_index)
+
+    return attached
+
+
+def process_other_mounted_cd(partitions: dict) -> List[str]:
+    attached = []
+    attached_indexes = []
+
+    for ipart_dev, ipart_data in partitions.items():
+        if not ipart_data['mountpoint']:
+            continue
+
+        if is_mountpoint_attached(ipart_data['mountpoint']):
+            continue
+
+        if is_cd_label(ipart_data['label']):
+            drive_index = get_label_cd_index(ipart_data['label'])
+
+            if drive_index in attached_indexes:
+                # attach only one floppy per index
+                continue
+
+            if attach_mountpoint_cd_image(ipart_dev, ipart_data):
                 attached.append(ipart_dev)
                 attached_indexes.append(drive_index)
 
@@ -1236,6 +1425,7 @@ def process_other_mounted(partitions: dict):
     attached += process_other_mounted_floppy(partitions)
     attached += process_other_mounted_hard_disk(partitions)
     attached += process_other_mounted_hard_file(partitions)
+    attached += process_other_mounted_cd(partitions)
 
     return attached
 
@@ -1288,7 +1478,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 
     force_all_rw(mountpoint)
 
-    hdfs = mountpoint_find_files(mountpoint, '*.hdf')
+    hdfs = mountpoint_find_files(mountpoint, ['*.hdf'])
 
     if not hdfs:
         return False
@@ -1329,6 +1519,7 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 def process_unmounted(unmounted: list):
     global floppies
     global drives
+    global cd_drives
     global drives_changed
 
     detached = []
@@ -1361,21 +1552,39 @@ def process_unmounted(unmounted: list):
 
                 detached.append(idevice)
 
+        for icd_index, icd_data in enumerate(cd_drives):
+            if not icd_data:
+                continue
+
+            if icd_data['device'] == idevice:
+                detach_cd(icd_index)
+
+                detached.append(idevice)
+
     return detached
 
 
-def mountpoint_find_files(mountpoint: str, pattern: str) -> list:
+def mountpoint_find_files(mountpoint: str, patterns: List[str]) -> list:
     files = []
 
     for ifile in os.listdir(mountpoint):
         file_lower = ifile.lower()
+        match = False
 
-        if not fnmatch.fnmatch(file_lower, pattern):
+        for ipattern in patterns:
+            if fnmatch.fnmatch(file_lower, ipattern):
+                match = True
+
+                break
+        
+        if not match:
             continue
 
         files.append(os.path.join(mountpoint, ifile))
 
-    return sorted(files)
+    # TODO change sorting to sort like linux "find | sort"
+    # TODO so by file extension then name
+    return sorted(files, key=lambda x: os.path.splitext(x)[-1])
 
 
 def update_floppy_drive_sound(drive_index: int):
@@ -1423,34 +1632,72 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
     return floppy_data
 
 
-def get_mountpoint_adf(ipart_dev, ipart_data, force_file_pathname) -> str:
-    adfs = mountpoint_find_files(ipart_data['mountpoint'], '*.adf')
+def detach_cd(index: int, auto_commit: bool = False) -> dict:
+    global cd_drives
 
-    if not adfs:
+    cd_data = cd_drives[index]
+
+    if not cd_data:
         return None
 
-    if force_file_pathname and force_file_pathname in adfs:
+    print_log('Detaching "{pathname}" from CD{index}'.format(
+        pathname=cd_data['pathname'],
+        index=index
+    ))
+
+    cd_drives[index] = None
+
+    put_command('cfgfile_parse_line_type_all cdimage{index}='.format(
+        index=index
+    ))
+    put_command('config_changed 1')
+
+    if auto_commit:
+        # some games like Dreamweb will fail to detect
+        # new floppy when we change it too fast
+        # so split eject and insert into two parts
+        # using "commit" local command:
+        # eject, sleep 1 second, insert
+        put_local_commit_command(1)
+
+    return cd_data
+
+
+def get_medium_file(ipart_dev: str, ipart_data: dict, patterns: List[str], force_file_pathname: str) -> str:
+    medium_files = mountpoint_find_files(ipart_data['mountpoint'], patterns)
+
+    if not medium_files:
+        return None
+
+    if force_file_pathname and force_file_pathname in medium_files:
         return force_file_pathname
     else:
-        if not is_medium_floppy_auto_insert_adf(ipart_data):
+        if not is_medium_auto_insert_file(ipart_data):
             return None
 
-        default_adf = get_medium_floppy_default_adf(ipart_data)
+        default_file = get_medium_default_file(ipart_data)
 
-        if default_adf:
-            return default_adf
+        if default_file:
+            return default_file
 
-        return adfs[0]
-
-    return None
+        return medium_files[0]
 
 
 def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
+    global floppies
+
     mountpoint = ipart_data['mountpoint']
 
     force_all_rw(mountpoint)
 
-    iadf = get_mountpoint_adf(ipart_dev, ipart_data, force_file_pathname)
+    iadf = get_medium_file(
+        ipart_dev,
+        ipart_data,
+        [
+            '*.adf'
+        ],
+        force_file_pathname
+    )
 
     if not iadf:
         return False
@@ -1492,6 +1739,64 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
         return True
     else:
         print_log('Floppy already attached to DF{index}, eject it first'.format(
+            index=index
+        ))
+
+    return False
+
+# 123
+def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_pathname: str = None):
+    global cd_drives
+
+    mountpoint = ipart_data['mountpoint']
+
+    force_all_rw(mountpoint)
+
+    icdimage = get_medium_file(
+        ipart_dev,
+        ipart_data,
+        [
+            '*.cue',
+            '*.iso'
+        ],
+        force_file_pathname
+    )
+
+    if not icdimage:
+        return False
+
+    index = get_label_cd_index(ipart_data['label'])
+
+    if index >= MAX_CD_DRIVES:
+        return False
+
+    if not cd_drives[index] or cd_drives[index]['pathname'] != icdimage:
+        print_log('Attaching "{pathname}" to CD{index}'.format(
+            pathname=icdimage,
+            index=index
+        ))
+
+        cd_drives[index] = {
+            'pathname': icdimage,
+            'mountpoint': mountpoint,
+            'device': ipart_dev,
+            'file_size': os.path.getsize(icdimage),
+            'last_access_ts': 0,
+            'last_cached_size': 0,
+            'config': ipart_data['config'],
+            'medium': ipart_data
+        }
+
+        put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
+            index=index,
+            pathname=icdimage
+        ))
+
+        put_command('config_changed 1')
+
+        return True
+    else:
+        print_log('CD already attached to CD{index}, eject it first'.format(
             index=index
         ))
 
@@ -1553,32 +1858,32 @@ def get_medium_partition_label(medium_data):
     return medium_data['config']['config']['label']
 
 
-def is_medium_floppy_auto_insert_adf(medium_data):
+def is_medium_auto_insert_file(medium_data):
     if not medium_data['config']:
         return True
 
     if 'config' not in medium_data['config']:
         return True
 
-    if 'auto_insert_adf' not in medium_data['config']['config']:
+    if 'auto_insert_file' not in medium_data['config']['config']:
         return True
 
-    return medium_data['config']['config'].getboolean('auto_insert_adf')
+    return medium_data['config']['config'].getboolean('auto_insert_file')
 
 
-def get_medium_floppy_default_adf(medium_data):
+def get_medium_default_file(medium_data):
     if not medium_data['config']:
         return None
 
     if 'config' not in medium_data['config']:
         return None
 
-    if 'default_adf' not in medium_data['config']['config']:
+    if 'default_file' not in medium_data['config']['config']:
         return None
 
     return os.path.realpath(os.path.join(
         medium_data['mountpoint'],
-        medium_data['config']['config']['default_adf']
+        medium_data['config']['config']['default_file']
     ))
 
 
@@ -1746,6 +2051,16 @@ def get_media_command_line_config():
 
                     drive_index += 1
 
+    # cd drives
+    str_cd_drives = ''
+
+    for index, icd in enumerate(cd_drives):
+        if icd:
+            str_cd_drives += ' -s cdimage{index}="{pathname}" '.format(
+                index=index,
+                pathname=icd['pathname']
+            )
+
     if ENABLE_INTERNAL_DRIVE and drive_index < MAX_DRIVES:
         # add read-only internal drive
         str_drives += '-s ' + format_filesystem2_string(
@@ -1766,7 +2081,8 @@ def get_media_command_line_config():
 
     return {
         'floppies': str_floppies,
-        'drives': str_drives
+        'drives': str_drives,
+        'cd_drives': str_cd_drives
     }
 
 
@@ -1894,7 +2210,8 @@ def run_emulator():
         kickstart=kickstart_pathname,
         extended_kickstart=extended_kickstart,
         floppies=media_config['floppies'],
-        drives=media_config['drives']
+        drives=media_config['drives'],
+        cd_drives=media_config['cd_drives']
     )
 
     print_log('Emulator command line: ' + pattern)
@@ -2009,6 +2326,7 @@ while True:
         print_partitions(partitions)
         print_attached_floppies()
         print_attached_hard_disks()
+        print_attached_cd_images()
 
     old_partitions = partitions
 
