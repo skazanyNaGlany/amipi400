@@ -94,7 +94,7 @@ HDF_TYPE_HDFRDB = 8
 HDF_TYPE_DISKIMAGE = 2
 HDF_TYPE_HDF  = 5
 FLOPPY_EXTENSIONS = ['*.adf']
-CD_EXTENSIONS = ['*.cue', '*.iso']
+CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
 CD_REPLACE_RESTART = True
 
