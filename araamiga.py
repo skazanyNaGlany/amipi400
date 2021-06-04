@@ -93,6 +93,8 @@ MONITOR_STATE_KEEP_OFF_TO_EMULATOR = 2
 HDF_TYPE_HDFRDB = 8
 HDF_TYPE_DISKIMAGE = 2
 HDF_TYPE_HDF  = 5
+FLOPPY_EXTENSIONS = ['*.adf']
+CD_EXTENSIONS = ['*.cue', '*.iso']
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -393,7 +395,7 @@ def string_unify2(str_to_unify: str, exclude = None) -> str:
 
 
 def find_similar_file_adf(directory, pattern):
-    adfs = mountpoint_find_files(directory, ['*.adf'])
+    adfs = mountpoint_find_files(directory, FLOPPY_EXTENSIONS)
 
     if not adfs:
         return None
@@ -419,7 +421,7 @@ def find_similar_file_adf(directory, pattern):
 
 
 def find_similar_file_cd_image(directory, pattern):
-    cd_images = mountpoint_find_files(directory, ['*.cue', '*.iso'])
+    cd_images = mountpoint_find_files(directory, CD_EXTENSIONS)
 
     if not cd_images:
         return None
@@ -1695,9 +1697,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     iadf = get_medium_file(
         ipart_dev,
         ipart_data,
-        [
-            '*.adf'
-        ],
+        FLOPPY_EXTENSIONS,
         force_file_pathname
     )
 
@@ -1757,10 +1757,7 @@ def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_path
     icdimage = get_medium_file(
         ipart_dev,
         ipart_data,
-        [
-            '*.cue',
-            '*.iso'
-        ],
+        CD_EXTENSIONS,
         force_file_pathname
     )
 
