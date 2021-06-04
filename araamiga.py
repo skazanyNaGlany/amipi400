@@ -64,6 +64,7 @@ MAX_FLOPPIES = 1
 MAX_DRIVES = 6
 MAX_CD_DRIVES = 1
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
+SIMILAR_ROM = '(Disk {index} of {max_index})'
 KICKSTART_PATHNAMES = [
     '/boot/araamiga/kickstarts/*.rom',
     '../amiberry/kickstarts/*.rom',
@@ -586,7 +587,7 @@ def process_floppy_replace_by_index_action(action: str):
     to_insert_pathname = None
 
     for value in similar_roms:
-        rom_sign = '(Disk {index} of {max_index})'.format(
+        rom_sign = SIMILAR_ROM.format(
             index=rom_disk_no,
             max_index=len_similar_roms
         )
@@ -633,7 +634,7 @@ def process_cd_replace_by_index_action(action: str):
     to_insert_pathname = None
 
     for value in similar_roms:
-        rom_sign = '(Disk {index} of {max_index})'.format(
+        rom_sign = SIMILAR_ROM.format(
             index=rom_disk_no,
             max_index=len_similar_roms
         )
@@ -1745,7 +1746,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
 
     return False
 
-# 123
+
 def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_pathname: str = None):
     global cd_drives
 
