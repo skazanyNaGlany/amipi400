@@ -1483,25 +1483,28 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
 
     force_all_rw(mountpoint)
 
-    hdfs = mountpoint_find_files(mountpoint, HARD_FILE_EXTENSIONS)
+    ihdf = get_medium_file(
+        ipart_dev,
+        ipart_data,
+        HARD_FILE_EXTENSIONS
+    )
 
-    if not hdfs:
+    if not ihdf:
         return False
 
-    first_hdf = hdfs[0]
     hd_no = get_label_hard_file_index(ipart_data['label'])
 
     if hd_no >= MAX_DRIVES:
         return False
 
-    if not drives[hd_no] or drives[hd_no]['pathname'] != first_hdf:
+    if not drives[hd_no] or drives[hd_no]['pathname'] != ihdf:
         print_log('Attaching "{pathname}" to DH{index} (HDF)'.format(
-            pathname=first_hdf,
+            pathname=ihdf,
             index=hd_no
         ))
 
         drives[hd_no] = {
-            'pathname': first_hdf,
+            'pathname': ihdf,
             'mountpoint': ipart_data['mountpoint'],
             'label': ipart_data['label'],
             'device': ipart_dev,
@@ -1668,7 +1671,12 @@ def detach_cd(index: int, auto_commit: bool = False) -> dict:
     return cd_data
 
 
-def get_medium_file(ipart_dev: str, ipart_data: dict, patterns: List[str], force_file_pathname: str) -> str:
+def get_medium_file(
+    ipart_dev: str,
+    ipart_data: dict,
+    patterns: List[str],
+    force_file_pathname: str = None
+) -> str:
     medium_files = mountpoint_find_files(ipart_data['mountpoint'], patterns)
 
     if not medium_files:
