@@ -52,6 +52,7 @@ ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
 ENABLE_AUDIO_LAG_FIX = True
 ENABLE_FORCE_FSCK = 'auto'
 ENABLE_FORCE_RW = False
+ENABLE_CD_REPLACE_RESTART = False
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -96,7 +97,6 @@ HDF_TYPE_HDF  = 5
 FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
-CD_REPLACE_RESTART = True
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -1670,7 +1670,7 @@ def detach_cd(index: int, auto_commit: bool = False) -> dict:
         # eject, sleep 1 second, insert
         put_local_commit_command(1)
 
-    if CD_REPLACE_RESTART:
+    if ENABLE_CD_REPLACE_RESTART:
         drives_changed = True
 
     return cd_data
@@ -1801,7 +1801,7 @@ def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_path
             'medium': ipart_data
         }
 
-        if CD_REPLACE_RESTART:
+        if ENABLE_CD_REPLACE_RESTART:
             drives_changed = True
 
         put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
