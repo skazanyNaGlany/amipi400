@@ -53,6 +53,7 @@ ENABLE_AUDIO_LAG_FIX = True
 ENABLE_FORCE_FSCK = 'auto'
 ENABLE_FORCE_RW = False
 ENABLE_CD_REPLACE_RESTART = False
+ENABLE_CD_PERM_FIX = True
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -97,6 +98,7 @@ HDF_TYPE_HDF  = 5
 FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
+CD_PERM_FIX_PATHNAME = '/dev/zero'
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -1656,9 +1658,11 @@ def detach_cd(index: int, auto_commit: bool = False) -> dict:
     ))
 
     cd_drives[index] = None
+    cd_empty_pathname = get_empty_cd_pathname()
 
-    put_command('cfgfile_parse_line_type_all cdimage{index}='.format(
-        index=index
+    put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
+        index=index,
+        pathname=cd_empty_pathname
     ))
     put_command('config_changed 1')
 
@@ -2031,6 +2035,35 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
     return config
 
 
+def get_empty_cd_pathname():
+    if not ENABLE_CD_PERM_FIX:
+        return ''
+
+    return CD_PERM_FIX_PATHNAME
+
+
+def get_cd_drives_command_line_config() -> str:
+    str_cd_drives = ''
+
+    for index, icd in enumerate(cd_drives):
+        pathname = ''
+
+        if icd:
+            pathname = icd['pathname']
+        else:
+            pathname = get_empty_cd_pathname()
+
+        if not pathname:
+            continue
+
+        str_cd_drives += ' -s cdimage{index}="{pathname}" '.format(
+            index=index,
+            pathname=pathname
+        )
+
+    return str_cd_drives
+
+
 def get_media_command_line_config():
     # floppies
     str_floppies = ''
@@ -2069,14 +2102,7 @@ def get_media_command_line_config():
                     drive_index += 1
 
     # cd drives
-    str_cd_drives = ''
-
-    for index, icd in enumerate(cd_drives):
-        if icd:
-            str_cd_drives += ' -s cdimage{index}="{pathname}" '.format(
-                index=index,
-                pathname=icd['pathname']
-            )
+    str_cd_drives = get_cd_drives_command_line_config()
 
     if ENABLE_INTERNAL_DRIVE and drive_index < MAX_DRIVES:
         # add read-only internal drive
