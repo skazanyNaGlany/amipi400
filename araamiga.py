@@ -258,6 +258,7 @@ def check_system_binaries():
     print_log('Checking system binaries')
 
     bins = [
+        'rmdir',
         'sync',
         'echo',
         'fsck',
@@ -2272,6 +2273,13 @@ def kill_emulator():
     except sh.ErrorReturnCode_1:
         print_log('No process found')
 
+def delete_unused_mountpoints():
+    print_log('Delete unused mountpoints')
+
+    pathname = os.path.join(DEVS_PATHNAME, '*')
+
+    os.system('rmdir ' + pathname)
+
 
 def on_key_press(key):
     global key_ctrl_pressed
@@ -2329,6 +2337,7 @@ check_pre_requirements()
 configure_tmp_ini()
 configure_system()
 configure_volumes()
+delete_unused_mountpoints()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 keyboard_listener.start()
@@ -2370,6 +2379,9 @@ while True:
         print_attached_floppies()
         print_attached_hard_disks()
         print_attached_cd_images()
+
+    if new_mounted or unmounted:
+        delete_unused_mountpoints()
 
     old_partitions = partitions
 
