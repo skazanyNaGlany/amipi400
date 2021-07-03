@@ -54,6 +54,8 @@ ENABLE_FORCE_FSCK = 'auto'
 ENABLE_FORCE_RW = False
 ENABLE_CD_REPLACE_RESTART = False
 ENABLE_CD_PERM_FIX = True
+ENABLE_MOUSE_UNGRAB = False
+ENABLE_F12_OPEN_GUI = False
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -78,13 +80,13 @@ KICKSTART_EXTENDED_PATHNAMES = [
     'kickstarts/extended/*.rom',
 ]
 # stock Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 # fastest Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s amiberry.open_gui=none -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_24bit_addressing=false -s cpu_memory_cycle_exact=false -s fpu_strict=true -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 # stock Amiga CD32
-# EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} -s magic_mouse=none {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {drives} {cd_drives}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
@@ -2212,10 +2214,25 @@ def get_floppy_drive_sound_config_options():
     return config_options
 
 
+def get_gui_config_options() -> List[str]:
+    config_options = []
+
+    if not ENABLE_MOUSE_UNGRAB:
+        config_options.append('magic_mouse=none')
+
+    if not ENABLE_F12_OPEN_GUI:
+        config_options.append('amiberry.open_gui=none')
+
+    return config_options
+
+
 def get_emulator_command_line_config():
     config_str = ''
 
     for ioption in get_floppy_drive_sound_config_options():
+        config_str += ' -s ' + ioption + ' '
+
+    for ioption in get_gui_config_options():
         config_str += ' -s ' + ioption + ' '
 
     if ' -m CD32 ' in EMULATOR_RUN_PATTERN:
