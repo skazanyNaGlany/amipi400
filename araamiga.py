@@ -1051,7 +1051,7 @@ def execute_commands():
             block_till_tmp_ini_exists()
 
 
-def mount_partitions(partitions: dict) -> list:
+def mount_partitions(partitions: dict, failing_devices_ignore: List[str]) -> list:
     mounted = []
 
     for key, value in partitions.items():
@@ -1064,10 +1064,18 @@ def mount_partitions(partitions: dict) -> list:
             not is_cd_label(value['label']):
             continue
 
+        if key in failing_devices_ignore:
+            continue
+
         os.makedirs(value['internal_mountpoint'], exist_ok=True)
 
         force_fsck(key)
-        force_mount(key, value['internal_mountpoint'])
+
+        if not force_mount(key, value['internal_mountpoint']):
+            failing_devices_ignore.append(key)
+
+            continue
+
         force_all_rw(value['internal_mountpoint'])
 
         partitions[key]['mountpoint'] = value['internal_mountpoint']
@@ -2357,6 +2365,8 @@ configure_volumes()
 delete_unused_mountpoints()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
+failing_devices_ignore = []
+
 keyboard_listener.start()
 
 # give the user one second so he can press
@@ -2373,6 +2383,9 @@ while True:
 
     partitions = get_partitions2()
 
+    if partitions != old_partitions:
+        failing_devices_ignore = []
+
     unmounted = unmount_partitions(partitions, old_partitions)
 
     if unmounted:
@@ -2381,7 +2394,7 @@ while True:
         new_detached = process_unmounted(unmounted)
 
     # mount new partitions
-    new_mounted = mount_partitions(partitions)
+    new_mounted = mount_partitions(partitions, failing_devices_ignore)
 
     if new_mounted:
         print_log('Mounted new partitions')
