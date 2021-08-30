@@ -563,6 +563,37 @@ def process_cd_replace_action(partitions: dict, action: str):
     attach_mountpoint_cd_image(medium['device'], medium, pathname)
 
 
+def process_wifi_action(action: str):
+    wifi_params = action[4:].strip()
+
+    if not wifi_params:
+        disconnect_wifi()
+
+        return
+
+    if not wifi_params.startswith(','):
+        return
+
+    parts = wifi_params[1:].split(',')
+
+    if len(parts) != 2:
+        return
+
+    parts[0] = parts[0].strip()
+    parts[1] = parts[1].strip()
+
+    if not parts[0] or not parts[1]:
+        return
+
+    os.system('echo "{password}" | wpa_passphrase "{ssid}" > {config_pathname}'.format(
+        password=parts[1],
+        ssid=parts[0],
+        config_pathname=WPA_SUPPLICANT_CONF_PATHNAME
+    ))
+
+    connect_wifi()
+
+
 def find_similar_roms(rom_path: str) -> list:
     dirname = os.path.dirname(rom_path)
     basename = os.path.basename(rom_path)
@@ -701,6 +732,8 @@ def process_tab_combo_action(partitions: dict, action: str):
             return
 
         process_cd_replace_action(partitions, action)
+    elif action.startswith('wifi'):
+        process_wifi_action(action)
 
 
 def action_to_str(action: list) -> str:
