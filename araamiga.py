@@ -2427,6 +2427,8 @@ def connect_wifi():
 
 
 def disconnect_wifi():
+    print_log('Disconnecting from WIFI')
+
     wifi_interfaces = iwconfig()
 
     if not wifi_interfaces:
