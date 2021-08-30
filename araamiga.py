@@ -103,6 +103,7 @@ HARD_FILE_EXTENSIONS = ['*.hdf']
 CD_PERM_FIX_PATHNAME = '/dev/zero'
 FLOPPY_DRIVE_READ_A_HEAD_SECTORS = 0
 DEFAULT_READ_A_HEAD_SECTORS = 256
+WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -285,7 +286,12 @@ def check_system_binaries():
         'xset',
         'clear',
         'sh',
-        'blockdev'
+        'blockdev',
+        'iwconfig',
+        'rfkill',
+        'wpa_supplicant',
+        'rm',
+        'ifconfig'
     ]
 
     for ibin in bins:
@@ -2345,6 +2351,107 @@ def delete_unused_mountpoints():
     os.system('rmdir ' + pathname)
 
 
+def line_parts_to_dict(line_parts: List[str], maxsplit: int) -> dict:
+    ret = {}
+
+    for ipart in line_parts:
+        parts = ipart.split(':', 1)
+
+        if len(parts) < 2:
+            continue
+
+        ret[parts[0].strip()] = parts[1].strip()
+
+    return ret
+
+
+def iwconfig():
+    iwconfig_buf = StringIO()
+    ret = {}
+    last_ifname = None
+
+    sh.iwconfig(_out=iwconfig_buf)
+
+    for line in iwconfig_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        parts = line.split('  ')
+        len_parts = len(parts)
+
+        if not len_parts:
+            continue
+
+        if ' IEEE 802.11  ESSID:' in line:
+            last_ifname = parts[0]
+
+            ret[last_ifname] = line_parts_to_dict(parts, 1)
+        else:
+            if not last_ifname:
+                continue
+
+            ret[last_ifname].update(
+                line_parts_to_dict(parts, 1)
+            )
+
+    return ret
+
+
+def connect_wifi():
+    if not os.path.exists(WPA_SUPPLICANT_CONF_PATHNAME):
+        return
+
+    print_log(WPA_SUPPLICANT_CONF_PATHNAME + ' exists, connecting to WIFI')
+
+    wifi_interfaces = iwconfig()
+
+    if not wifi_interfaces:
+        print_log('No WIFI interfaces')
+
+    if_name = list(wifi_interfaces.keys())[0]
+    if_data = wifi_interfaces[if_name]
+
+    if if_data['Access Point'] != 'Not-Associated':
+        print_log(if_name + ' is already connected to ' + if_data['ESSID'] + ' network, skipping')
+
+        return
+
+    os.system('killall -9 wpa_supplicant')
+    os.system('rfkill unblock wifi')
+    os.system('wpa_supplicant -B -c {config_pathname} -i {interface}'.format(
+        config_pathname=WPA_SUPPLICANT_CONF_PATHNAME,
+        interface=if_name
+    ))
+
+
+def disconnect_wifi():
+    wifi_interfaces = iwconfig()
+
+    if not wifi_interfaces:
+        print_log('No WIFI interfaces')
+
+    if_name = list(wifi_interfaces.keys())[0]
+    if_data = wifi_interfaces[if_name]
+
+    if if_data['Access Point'] == 'Not-Associated':
+        print_log(if_name + ' is not connected to any network, skipping')
+
+        return
+
+    os.system('rm {config_pathname}'.format(
+        config_pathname=WPA_SUPPLICANT_CONF_PATHNAME
+    ))
+    os.system('killall -9 wpa_supplicant')
+    os.system('ifconfig {interface} down'.format(
+        interface=if_name
+    ))
+    os.system('ifconfig {interface} up'.format(
+        interface=if_name
+    ))
+
+
 def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
@@ -2402,6 +2509,8 @@ configure_tmp_ini()
 configure_system()
 configure_volumes()
 delete_unused_mountpoints()
+connect_wifi()
+# disconnect_wifi()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 failing_devices_ignore = []
