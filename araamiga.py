@@ -101,6 +101,8 @@ FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
 CD_PERM_FIX_PATHNAME = '/dev/zero'
+FLOPPY_DRIVE_READ_A_HEAD_SECTORS = 0
+DEFAULT_READ_A_HEAD_SECTORS = 256
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -282,7 +284,8 @@ def check_system_binaries():
         'swapoff',
         'xset',
         'clear',
-        'sh'
+        'sh',
+        'blockdev'
     ]
 
     for ibin in bins:
@@ -1457,6 +1460,34 @@ def process_other_mounted(partitions: dict):
     return attached
 
 
+def set_devices_read_a_head(devices: List[str], partitions: dict):
+    devices = list(set(devices))
+
+    for ipart_dev in devices:
+        if ipart_dev not in partitions:
+            continue
+
+        ipart_data = partitions[ipart_dev]
+
+        if not ipart_data['mountpoint']:
+            continue
+
+        if not is_mountpoint_attached(ipart_data['mountpoint']):
+            continue
+
+        if ipart_data['is_floppy_drive']:
+            set_device_read_a_head_sectors(ipart_dev, FLOPPY_DRIVE_READ_A_HEAD_SECTORS)
+        else:
+            set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
+
+
+def set_device_read_a_head_sectors(device: str, sectors: int):
+    os.system('blockdev --setra {sectors} {device}'.format(
+        sectors=sectors,
+        device=device
+    ))
+
+
 def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     global drives
     global drives_changed
@@ -2410,6 +2441,9 @@ while True:
         new_attached = process_new_mounted(partitions, new_mounted)
 
     other_attached = process_other_mounted(partitions)
+
+    if new_attached or other_attached:
+        set_devices_read_a_head(new_attached + other_attached, partitions)
 
     if unmounted or new_mounted or new_attached or new_detached or other_attached:
         # something changed
