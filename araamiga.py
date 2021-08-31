@@ -563,6 +563,12 @@ def process_cd_replace_action(partitions: dict, action: str):
     attach_mountpoint_cd_image(medium['device'], medium, pathname)
 
 
+def print_wifi_action_commands():
+    print_log('Valid WIFI action commands:')
+    print_log('WIFI connect: wifi,two alpha country code ISO/IEC 3166-1 alpha2,ssid,password')
+    print_log('WIFI disconnect: wifi')
+
+
 def process_wifi_action(action: str):
     wifi_params = action[4:].strip()
 
@@ -572,22 +578,34 @@ def process_wifi_action(action: str):
         return
 
     if not wifi_params.startswith(','):
+        print_wifi_action_commands()
         return
 
     parts = wifi_params[1:].split(',')
 
-    if len(parts) != 2:
+    if len(parts) != 3:
+        print_wifi_action_commands()
         return
 
-    parts[0] = parts[0].strip()
-    parts[1] = parts[1].strip()
+    parts[0] = parts[0].strip().upper()         # country code in ISO/IEC 3166-1 alpha2
+    parts[1] = parts[1].strip()                 # ssid
+    parts[2] = parts[2].strip()                 # password
 
-    if not parts[0] or not parts[1]:
+    if not parts[0] or not parts[1] or not parts[2]:
+        print_wifi_action_commands()
         return
+
+    if len(parts[0]) != 2 or not parts[0].isalpha():
+        print_wifi_action_commands()
+        return
+
+    os.system('iw reg set {country}'.format(
+        country=parts[0]
+    ))
 
     os.system('echo "{password}" | wpa_passphrase "{ssid}" > {config_pathname}'.format(
-        password=parts[1],
-        ssid=parts[0],
+        password=parts[2],
+        ssid=parts[1],
         config_pathname=WPA_SUPPLICANT_CONF_PATHNAME
     ))
 
