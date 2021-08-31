@@ -2462,6 +2462,10 @@ def connect_wifi():
 def disconnect_wifi():
     print_log('Disconnecting from WIFI')
 
+    os.system('rm {config_pathname}'.format(
+        config_pathname=WPA_SUPPLICANT_CONF_PATHNAME
+    ))
+
     wifi_interfaces = iwconfig()
 
     if not wifi_interfaces:
@@ -2475,9 +2479,6 @@ def disconnect_wifi():
 
         return
 
-    os.system('rm {config_pathname}'.format(
-        config_pathname=WPA_SUPPLICANT_CONF_PATHNAME
-    ))
     os.system('killall -9 wpa_supplicant')
     os.system('ifconfig {interface} down'.format(
         interface=if_name
