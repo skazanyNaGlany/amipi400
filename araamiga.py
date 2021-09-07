@@ -36,7 +36,7 @@ except ImportError as xie:
 APP_UNIXNAME = 'araamiga'
 APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
-DEVS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'dev')
+INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 INTERNAL_DRIVE_LABEL = 'Internal'
 INTERNAL_DRIVE_PERMISSION = 'ro'
@@ -899,11 +899,11 @@ def sync():
 
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
-    pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)"'
+    pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)"'
     ret = OrderedDict()
 
-    # lsblk -P -o name,size,type,mountpoint,label -n
-    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label', '-n', _out=lsblk_buf)
+    # lsblk -P -o name,size,type,mountpoint,label,path -n
+    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path', '-n', _out=lsblk_buf)
 
     for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
@@ -918,12 +918,12 @@ def get_partitions2() -> OrderedDict:
 
         found = search_result.groups()
 
-        full_path = os.path.join(os.path.sep, 'dev', found[0])
+        full_path = found[5]
         device_data = {
             'mountpoint': found[3],
             'internal_mountpoint': os.path.join(
-                TMP_PATH_PREFIX,
-                get_relative_path(full_path)
+                INTERNAL_MOUNTPOINTS_PATHNAME,
+                found[0]
             ),
             'label': found[4],
             'config': None,
@@ -2217,7 +2217,7 @@ def get_media_command_line_config():
             INTERNAL_DRIVE_PERMISSION,
             drive_index,
             INTERNAL_DRIVE_LABEL,
-            DEVS_PATHNAME,
+            INTERNAL_MOUNTPOINTS_PATHNAME,
             INTERNAL_DRIVE_BOOT_PRIORITY
         ) + ' '
 
@@ -2225,7 +2225,7 @@ def get_media_command_line_config():
             drive_index,
             INTERNAL_DRIVE_PERMISSION,
             INTERNAL_DRIVE_LABEL,
-            DEVS_PATHNAME,
+            INTERNAL_MOUNTPOINTS_PATHNAME,
             INTERNAL_DRIVE_BOOT_PRIORITY
         ) + ' '
 
@@ -2397,7 +2397,7 @@ def kill_emulator():
 def delete_unused_mountpoints():
     print_log('Delete unused mountpoints')
 
-    pathname = os.path.join(DEVS_PATHNAME, '*')
+    pathname = os.path.join(INTERNAL_MOUNTPOINTS_PATHNAME, '*')
 
     os.system('rmdir ' + pathname)
 
