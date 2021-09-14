@@ -4,3 +4,12 @@ file; customization by ENABLE_CREATE_ADF option
 3. DONE: Ability to load .iso file from ARA_CD0 (0-4) and cdimage0 config option; same feature
 as loading .adf file(s) from ARA_DF0
 4. DONE: Amiga CD32 support
+
+Bugs:
+1. When attaching many floppies at the same index, with new mountpoints:
+Mounting /dev/sda as /tmp/araamiga/mountpoints/sda
+Mounting /dev/sdb as /tmp/araamiga/mountpoints/sdb
+Mounted new partitions
+Attaching "/tmp/araamiga/mountpoints/sda/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 2 of 2).adf" to DF0
+Attaching "/tmp/araamiga/mountpoints/sdb/install31.adf" to DF0
+Attaching "/tmp/araamiga/mountpoints/sda/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 2 of 2).adf" to DF0
