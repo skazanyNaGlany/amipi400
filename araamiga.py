@@ -64,7 +64,7 @@ EMULATOR_EXE_PATHNAMES = [
     '../amiberry/amiberry'
 ]
 EMULATOR_TMP_INI_NAME = 'amiberry.tmp.ini'
-MAX_FLOPPIES = 1
+MAX_FLOPPIES = 4
 MAX_DRIVES = 6
 MAX_CD_DRIVES = 1
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
