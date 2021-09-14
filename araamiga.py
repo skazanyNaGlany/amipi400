@@ -936,7 +936,7 @@ def get_partitions2() -> OrderedDict:
         if device_data['mountpoint']:
             device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
 
-        device_data['is_floppy_drive'] = len(found[0]) == 3 and found[0].isalpha() and found[1] == '1.4M' and found[2] == 'disk'
+        device_data['is_floppy_drive'] = is_device_physical_floppy(full_path)
 
         ret[full_path] = device_data
 
@@ -1190,6 +1190,10 @@ def unmount_partitions(partitions: dict, old_partitions: dict):
             partitions[idevice]['mountpoint'] = ''
 
     return unmounted
+
+
+def is_device_physical_floppy(device_pathname: str) -> bool:
+    return device_pathname in physical_floppy_drives
 
 
 def is_floppy_label(label: str) -> bool:
