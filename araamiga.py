@@ -2550,6 +2550,8 @@ def find_physical_floppy_drives():
 
 
 def update_physical_floppy_drives():
+    # HACK do not use MAX_FLOPPIES here, just collect all physical drives
+    # HACK MAX_FLOPPIES will be used elsewhere
     global physical_floppy_drives
 
     print_log('Getting information about physical floppy drives')
