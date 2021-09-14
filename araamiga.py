@@ -134,6 +134,7 @@ audio_lag_fix_step = 0
 audio_lag_fix_ts = 0
 sync_disks_ts = 0
 sync_process = None
+physical_floppy_drives = OrderedDict()
 
 os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -291,7 +292,8 @@ def check_system_binaries():
         'rfkill',
         'wpa_supplicant',
         'rm',
-        'ifconfig'
+        'ifconfig',
+        'ufiformat'
     ]
 
     for ibin in bins:
@@ -1015,6 +1017,21 @@ def print_commands():
             index=index,
             cmd=icmd
         ))
+
+
+def print_physical_floppy_drives():
+    if not physical_floppy_drives:
+        return
+
+    print_log('Physical floppy drives:')
+
+    for key, drive_data in physical_floppy_drives.items():
+        print_log(key)
+
+        print_log('  index: ' + str(drive_data['index']))
+        print_log('  device: ' + drive_data['device'])
+
+        print_log()
 
 
 def process_changed_drives():
@@ -2506,6 +2523,49 @@ def disconnect_wifi():
     ))
 
 
+def find_physical_floppy_drives():
+    ufiformat_buf = StringIO()
+    ret = []
+
+    # ufiformat --inquire --quiet
+    sh.ufiformat('--inquire', '--quiet', _out=ufiformat_buf)
+
+    for line in ufiformat_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        parts = line.split()
+
+        if len(parts) != 2:
+            continue
+
+        device = parts[0]
+
+        if not os.path.exists(device) or not os.path.isfile(device):
+            ret.append(device)
+
+    return ret
+
+
+def update_physical_floppy_drives():
+    global physical_floppy_drives
+
+    print_log('Getting information about physical floppy drives')
+
+    physical_floppy_drives = OrderedDict()
+    index = 0
+
+    for device in sorted(find_physical_floppy_drives()):
+        physical_floppy_drives[device] = {
+            'index': index,
+            'device': device
+        }
+
+        index += 1
+
+
 def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
@@ -2565,6 +2625,8 @@ configure_volumes()
 delete_unused_mountpoints()
 connect_wifi()
 # disconnect_wifi()
+update_physical_floppy_drives()
+print_physical_floppy_drives()
 
 keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
 failing_devices_ignore = []
