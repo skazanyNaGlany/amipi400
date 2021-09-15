@@ -56,6 +56,7 @@ ENABLE_CD_REPLACE_RESTART = False
 ENABLE_CD_PERM_FIX = True
 ENABLE_MOUSE_UNGRAB = False
 ENABLE_F12_OPEN_GUI = False
+ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -477,7 +478,7 @@ def find_floppy_first_mountpoint(partitions: dict, floppy_index: int) -> dict:
         if not is_floppy_label(value['label']):
             continue
 
-        if get_label_floppy_index(value['label']) == floppy_index:
+        if get_proper_floppy_index(value['label'], value['device']) == floppy_index:
             return value
 
     return None
@@ -1192,6 +1193,20 @@ def unmount_partitions(partitions: dict, old_partitions: dict):
     return unmounted
 
 
+def get_proper_floppy_index(filesystem_label: str, device_pathname: str) -> int:
+    '''
+    Return floppy drive index that will be used in the emulator (0, 1, 2, 3)
+    if user will insert floppy into real floppy drive. In other words
+    index from filesystem label will not ne used, it will use floppy drive index
+    seen by the system (/dev/sda is 0, /dev/sdb is 1, etc.)
+    '''
+
+    if not ENABLE_PHYSICAL_FLOPPY_DRIVES or device_pathname not in physical_floppy_drives:
+        return get_label_floppy_index(filesystem_label)
+
+    return physical_floppy_drives[device_pathname]['index']
+
+
 def is_device_physical_floppy(device_pathname: str) -> bool:
     return device_pathname in physical_floppy_drives
 
@@ -1405,7 +1420,7 @@ def process_new_mounted(partitions: dict, new_mounted: list) -> List[str]:
         if is_floppy_label(ipart_data['label']):
             if attach_mountpoint_floppy(idevice, ipart_data):
                 update_floppy_drive_sound(
-                    get_label_floppy_index(ipart_data['label'])
+                    get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
                 )
 
                 attached.append(idevice)
@@ -1445,7 +1460,7 @@ def process_other_mounted_floppy(partitions: dict):
             continue
 
         if is_floppy_label(ipart_data['label']):
-            drive_index = get_label_floppy_index(ipart_data['label'])
+            drive_index = get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
 
             if drive_index in attached_indexes:
                 # attach only one floppy per index
@@ -1850,7 +1865,7 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
     if not iadf:
         return False
 
-    index = get_label_floppy_index(ipart_data['label'])
+    index = get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
 
     if index >= MAX_FLOPPIES:
         return False
