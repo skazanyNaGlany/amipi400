@@ -12,9 +12,11 @@ try:
     import re
     import subprocess
     import logzero
+    import numpy
 
     from collections import OrderedDict
     from io import StringIO
+    from typing import Optional, List
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -27,13 +29,12 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 SYNC_DISKS_SECS = 60 * 3
 FLOPPY_EXTENSIONS = ['*.adf']
-
-partitions = None
-old_partitions = None
-sync_disks_ts = 0
-sync_process = None
-
-os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
+DEV_TYPE_FLOPPY = 1
+ADF_BOOTBLOCK = numpy.dtype([
+    ('DiskType',    numpy.byte,     (4, )   ),
+    ('Chksum',      numpy.uint32            ),
+    ('Rootblock',   numpy.uint32            )
+])
 
 
 def print_log(*args):
@@ -88,9 +89,7 @@ def other_actions():
         os.system('clear')
 
 
-def is_sync_running() -> bool:
-    global sync_process
-
+def is_sync_running(sync_process) -> bool:
     if not sync_process:
         return False
 
@@ -102,12 +101,9 @@ def is_sync_running() -> bool:
     return False
 
 
-def sync():
-    global sync_disks_ts
-    global sync_process
-
-    if is_sync_running():
-        return
+def sync(sync_disks_ts: int, sync_process):
+    if is_sync_running(sync_process):
+        return sync_disks_ts, sync_process
 
     current_ts = int(time.time())
 
@@ -115,12 +111,14 @@ def sync():
         sync_disks_ts = current_ts
 
     if current_ts - sync_disks_ts < SYNC_DISKS_SECS:
-        return
+        return sync_disks_ts, sync_process
 
     print_log('Syncing disks')
 
     sync_process = subprocess.Popen('sync')
     sync_disks_ts = current_ts
+
+    return sync_disks_ts, sync_process
 
 
 def get_partitions2() -> OrderedDict:
@@ -174,21 +172,103 @@ def print_partitions(partitions: dict):
         print_log()
 
 
-print_app_version()
-init_logger()
-check_pre_requirements()
-configure_system()
+def cleanup_disk_devices(partitions: dict, disk_devices: dict):
+    for ipart_dev in list(disk_devices.keys()):
+        if ipart_dev not in partitions:
+            del disk_devices[ipart_dev]
 
-while True:
-    partitions = get_partitions2()
 
-    if partitions != old_partitions:
-        # something changed
-        print_partitions(partitions)
+def add_disk_devices(partitions: dict, disk_devices: dict):
+    for ipart_dev, ipart_data in partitions.items():
+        if ipart_dev in disk_devices:
+            continue
 
-    old_partitions = partitions
+        header = read_file_header(ipart_dev)
 
-    other_actions()
-    sync()
+        if not header or len(header) < 512:
+            print_log('Cannot read header from {filename}'.format(
+                filename=ipart_dev
+            ))
 
-    time.sleep(1)
+            continue
+
+        if is_adf_header(header):
+            print_log('{filename} seems to be ADF file'.format(
+                filename=ipart_dev
+            ))
+
+            disk_devices[ipart_dev] = ipart_data.copy()
+            disk_devices[ipart_dev]['type'] = DEV_TYPE_FLOPPY
+
+
+def is_adf_header(header: bytes) -> bool:
+    # TODO provide better method to detect ADF header
+    parsed_header = numpy.frombuffer(header, ADF_BOOTBLOCK, 1)[0]
+
+    disk_type = parsed_header['DiskType'].tobytes().decode('ascii', 'ignore').rstrip('\0')
+
+    if disk_type != 'DOS':
+        return False
+
+    disk_type_other_bits = clear_bits(
+        parsed_header['DiskType'][3],
+        [0, 1, 2]
+    )
+
+    if disk_type_other_bits != 0:
+        return False
+
+    if parsed_header['Rootblock'] not in [0, 880]:
+        return False
+
+    return True
+
+
+def clear_bits(i: int, bits: list) -> int:
+    for ibit in bits:
+        i = i & ~(1<<ibit)
+
+    return i
+
+
+def read_file_header(filename: str) -> Optional[bytes]:
+    with open(filename, 'rb') as f:
+        return f.read(512)
+
+
+def update_disk_devices(partitions: dict, disk_devices: dict):
+    cleanup_disk_devices(partitions, disk_devices)
+    add_disk_devices(partitions, disk_devices)
+
+
+def main():
+    partitions = None
+    old_partitions = None
+    sync_disks_ts = 0
+    sync_process = None
+    disk_devices = {}
+
+    os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
+
+    print_app_version()
+    init_logger()
+    check_pre_requirements()
+    configure_system()
+
+    while True:
+        partitions = get_partitions2()
+
+        if partitions != old_partitions:
+            # something changed
+            print_partitions(partitions)
+            update_disk_devices(partitions, disk_devices)
+
+        old_partitions = partitions
+
+        other_actions()
+        sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
+
+        time.sleep(1)
+
+if __name__ == '__main__':
+    main()
