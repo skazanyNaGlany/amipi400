@@ -29,7 +29,8 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 SYNC_DISKS_SECS = 60 * 3
 FLOPPY_EXTENSIONS = ['*.adf']
-DEV_TYPE_FLOPPY = 1
+AMIGA_DEV_TYPE_FLOPPY = 1
+FLOPPY_DEVICE_SIZE = 1474560
 ADF_BOOTBLOCK = numpy.dtype([
     ('DiskType',    numpy.byte,     (4, )   ),
     ('Chksum',      numpy.uint32            ),
@@ -123,11 +124,11 @@ def sync(sync_disks_ts: int, sync_process):
 
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
-    pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)"'
+    pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)"'
     ret = OrderedDict()
 
-    # lsblk -P -o name,size,type,mountpoint,label,path -n
-    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path', '-n', _out=lsblk_buf)
+    # lsblk -P -o name,size,type,mountpoint,label,path -n -b
+    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path', '-n', '-b', _out=lsblk_buf)
 
     for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
@@ -148,7 +149,9 @@ def get_partitions2() -> OrderedDict:
             'label': found[4],
             'config': None,
             'device': full_path,
-            'is_floppy_drive': False
+            'is_floppy_drive': False,
+            'size': int(found[1]) if found[1] else 0,
+            'type': found[2]
         }
 
         ret[full_path] = device_data
@@ -168,6 +171,8 @@ def print_partitions(partitions: dict):
         print_log('  mountpoint: ' + str(value['mountpoint']))
         print_log('  label: ' + str(value['label']))
         print_log('  is_floppy_drive: ' + str(value['is_floppy_drive']))
+        print_log('  size: ' + str(value['size']))
+        print_log('  type: ' + str(value['type']))
 
         print_log()
 
@@ -183,6 +188,12 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
         if ipart_dev in disk_devices:
             continue
 
+        if ipart_data['type'] != 'disk':
+            continue
+
+        if ipart_data['size'] != FLOPPY_DEVICE_SIZE:
+            continue
+
         header = read_file_header(ipart_dev)
 
         if not header or len(header) < 512:
@@ -193,12 +204,12 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
             continue
 
         if is_adf_header(header):
-            print_log('{filename} seems to be ADF file'.format(
+            print_log('{filename} seems to be ADF'.format(
                 filename=ipart_dev
             ))
 
             disk_devices[ipart_dev] = ipart_data.copy()
-            disk_devices[ipart_dev]['type'] = DEV_TYPE_FLOPPY
+            disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
 
 
 def is_adf_header(header: bytes) -> bool:
