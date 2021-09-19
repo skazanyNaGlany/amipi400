@@ -1,3 +1,4 @@
+from errno import EINVAL, EIO
 import sys
 import os
 
@@ -66,6 +67,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 st_size=4096
             )
         }
+        self._handles = {}
 
     # Disable unused operations:
     access = None
@@ -97,6 +99,27 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     #         )
 
     #     return transcoded
+
+
+    def _close_handles(self):
+        for device_pathname, handle in self._handles.items():
+            os.close(handle)
+
+        self._handles = {}
+
+
+    def _get_handle(self, ipart_data) -> Optional[int]:
+        device = ipart_data['device']
+
+        if device in self._handles:
+            return self._handles[device]
+
+        try:
+            self._handles[device] = os.open(device, os.O_RDWR)
+        except:
+            return None
+
+        return self._handles[device]
 
 
     def _disk_device_exists(self, public_name: str):
@@ -157,9 +180,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if name.startswith(os.path.sep):
             name = name[1:]
 
-        # if not self._disk_device_exists(name):
-        #     raise FuseOSError(ENOENT)
-
         ipart_data = self._find_file(name)
 
         if not ipart_data:
@@ -199,10 +219,32 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     #     # raise Exception('open')
 
 
-    # def read(self, path, size, offset, fh):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('read')
+    def read(self, path, size, offset, fh):
+        name = path
+
+        if name.startswith(os.path.sep):
+            name = name[1:]
+
+        ipart_data = self._find_file(name)
+
+        if not ipart_data:
+            FuseOSError(ENOENT)
+
+        if offset >= self._get_file_size(ipart_data):
+            FuseOSError(EINVAL)
+
+        handle = self._get_handle(ipart_data)
+
+        if handle is None:
+            FuseOSError(EIO)
+
+        os.lseek(handle, offset, os.SEEK_SET)
+
+        print(handle)
+
+        return os.read(handle, size)
+
+        # raise Exception('read')
 
 
     def readdir(self, path, fh):
@@ -295,6 +337,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     #     pass
     #     # print(locals())
     #     # raise Exception('write')
+
+
+    def destroy(self, path):
+        self._close_handles()
 
 
 def print_log(*args):
