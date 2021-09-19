@@ -13,10 +13,16 @@ try:
     import subprocess
     import logzero
     import numpy
+    import threading
+    import time
+    import logging
 
     from collections import OrderedDict
     from io import StringIO
     from typing import Optional, List
+    from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
+    from errno import ENOENT
+    from stat import S_IFDIR, S_IFREG
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -36,6 +42,259 @@ ADF_BOOTBLOCK = numpy.dtype([
     ('Chksum',      numpy.uint32            ),
     ('Rootblock',   numpy.uint32            )
 ])
+MAIN_LOOP_MAX_COUNTER = 1
+
+
+class AmigaDiskDevicesFS(LoggingMixIn, Operations):
+    def __init__(self, disk_devices: dict):
+        self._now = time.time()
+        self._disk_devices = disk_devices
+        # self._static_files = {
+        #     '/': {
+        #         'real_pathname': TMP_PATH_PREFIX
+        #     }
+        # }
+        self._static_files = {
+            '/': dict(
+                st_mode=(S_IFDIR | 0o444),
+                st_ctime=self._now,
+                st_mtime=self._now,
+                st_atime=self._now,
+                st_nlink=2,
+                # st_gid=0,
+                # st_uid=0,
+                st_size=4096
+            )
+        }
+
+    # Disable unused operations:
+    access = None
+    flush = None
+    getxattr = None
+    listxattr = None
+    open = None
+    opendir = None
+    release = None
+    releasedir = None
+    statfs = None
+
+
+    # def _transcode_device_pathname(self, ipart_data: dict):
+    #     pathname = ipart_data['device'].replace(os.path.sep, '__')
+
+    #     if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
+    #         pathname += '.adf'
+
+    #     return pathname
+
+
+    # def _transcode_disk_devices(self):
+    #     transcoded = []
+
+    #     for ipart_dev, ipart_data in self._disk_devices.items():
+    #         transcoded.append(
+    #             self._transcode_device_pathname(ipart_data)
+    #         )
+
+    #     return transcoded
+
+
+    def _disk_device_exists(self, public_name: str):
+        for ipart_dev, ipart_data in self._disk_devices.items():
+            if ipart_data['public_name'] == public_name:
+                return True
+
+        return False
+
+
+    def _find_file(self, public_name: str) -> Optional[dict]:
+        for ipart_dev, ipart_data in self._disk_devices.items():
+            if ipart_data['public_name'] == public_name:
+                return ipart_data
+
+        return None
+
+
+    def _get_file_size(self, ipart_data: dict) -> int:
+        if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
+            return 901120
+
+        return 0
+
+
+    # def _os_lstat(self, pathname: str):
+    #     st = os.lstat(pathname)
+
+    #     return dict((key, getattr(st, key)) for key in (
+    #         'st_atime', 'st_ctime', 'st_gid', 'st_mode', 'st_mtime',
+    #         'st_nlink', 'st_size', 'st_uid'))
+
+
+    # def chmod(self, path, mode):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('chmod')
+
+
+    # def chown(self, path, uid, gid):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('chown')
+
+
+    # def create(self, path, mode):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('create')
+
+
+    def getattr(self, path, fh=None):
+        if path in self._static_files:
+            return self._static_files[path]
+
+        name = path
+
+        if name.startswith(os.path.sep):
+            name = name[1:]
+
+        # if not self._disk_device_exists(name):
+        #     raise FuseOSError(ENOENT)
+
+        ipart_data = self._find_file(name)
+
+        if not ipart_data:
+            FuseOSError(ENOENT)
+
+        now = time.time()
+
+        return dict(st_mode=(S_IFREG | 0o666),
+                    st_nlink=1,
+                    st_size=self._get_file_size(ipart_data),
+                    st_ctime=now,
+                    st_mtime=now,
+                    st_atime=now)
+
+
+    # # def getxattr(self, path, name, position=0):
+    # #     pass
+    # #     # print(locals())
+    # #     # raise Exception('getxattr')
+
+
+    # def listxattr(self, path):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('listxattr')
+
+
+    # def mkdir(self, path, mode):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('mkdir')
+
+
+    # def open(self, path, flags):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('open')
+
+
+    # def read(self, path, size, offset, fh):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('read')
+
+
+    def readdir(self, path, fh):
+        entries = [
+            '.',
+            '..'
+        ]
+
+        if path != '/':
+            return entries
+
+        for ipart_dev, ipart_data in self._disk_devices.items():
+            entries.append(
+                ipart_data['public_name']
+            )
+
+        return entries
+
+        # print(locals())
+        # print(self._disk_devices)
+        # pass
+        # print(locals())
+        # raise Exception('readdir')
+
+
+    # def readlink(self, path):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('readlink')
+
+
+    # def removexattr(self, path, name):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('removexattr')
+
+
+    # def rename(self, old, new):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('rename')
+
+
+    # def rmdir(self, path):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('rmdir')
+
+
+    # def setxattr(self, path, name, value, options, position=0):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('setxattr')
+
+
+    # def statfs(self, path):
+    #     pass
+    #     # print(locals())
+    #     # print_log(locals())
+    #     # raise Exception('statfs')
+
+    #     # return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
+
+
+    # def symlink(self, target, source):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('symlink')
+
+
+    # def truncate(self, path, length, fh=None):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('truncate')
+
+
+    # def unlink(self, path):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('unlink')
+
+
+    # def utimens(self, path, times=None):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('utimens')
+
+
+    # def write(self, path, data, offset, fh):
+    #     pass
+    #     # print(locals())
+    #     # raise Exception('write')
 
 
 def print_log(*args):
@@ -53,6 +312,10 @@ def init_logger():
     print('Logging to ' + LOG_PATHNAME)
 
     logzero.logfile(LOG_PATHNAME, maxBytes=1e6, backupCount=3, disableStderrLogger=True)
+
+
+def init_logging():
+    logging.basicConfig(level=logging.DEBUG)
 
 
 def print_app_version():
@@ -82,12 +345,6 @@ def check_system_binaries():
         if not sh.which(ibin):
             print_log(ibin + ': command not found')
             sys.exit(1)
-
-
-def other_actions():
-    if ENABLE_LOGGER:
-        # logger enabled so clear the console
-        os.system('clear')
 
 
 def is_sync_running(sync_process) -> bool:
@@ -177,6 +434,15 @@ def print_partitions(partitions: dict):
         print_log()
 
 
+def device_get_public_name(ipart_data: dict):
+    pathname = ipart_data['device'].replace(os.path.sep, '__')
+
+    if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
+        pathname += '.adf'
+
+    return pathname
+
+
 def cleanup_disk_devices(partitions: dict, disk_devices: dict):
     for ipart_dev in list(disk_devices.keys()):
         if ipart_dev not in partitions:
@@ -210,6 +476,7 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
 
             disk_devices[ipart_dev] = ipart_data.copy()
             disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
+            disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
 
 
 def is_adf_header(header: bytes) -> bool:
@@ -252,34 +519,74 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
     add_disk_devices(partitions, disk_devices)
 
 
+def run_fuse(disk_devices: dict):
+    print('disk_devices', disk_devices)
+    FUSE(AmigaDiskDevicesFS(disk_devices), TMP_PATH_PREFIX, foreground=True, **{'allow_other': True})
+
+
+def init_fuse(disk_devices: dict):
+    print_log('Init FUSE')
+
+    fuse_instance_thread = threading.Thread(target=run_fuse, args=(disk_devices,))
+    fuse_instance_thread.start()
+
+    return fuse_instance_thread
+
+
+def unmount_fuse_mountpoint():
+    print_log('Unmounting FUSE mountpoint')
+
+    os.system('umount {dir}'.format(
+        dir=TMP_PATH_PREFIX
+    ))
+
+
+def flush_default_logger():
+    handlers = logging.getLogger().handlers
+
+    if handlers and len(handlers) > 1:
+        print('DDDDDDDDDD2')
+        handlers[0].flush()
+
+
 def main():
     partitions = None
     old_partitions = None
     sync_disks_ts = 0
     sync_process = None
     disk_devices = {}
+    loop_counter = 0
 
     os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
     print_app_version()
     init_logger()
+    init_logging()
     check_pre_requirements()
     configure_system()
+    init_fuse(disk_devices)
 
-    while True:
-        partitions = get_partitions2()
+    try:
+        while True:
+            if loop_counter < MAIN_LOOP_MAX_COUNTER:
+                partitions = get_partitions2()
 
-        if partitions != old_partitions:
-            # something changed
-            print_partitions(partitions)
-            update_disk_devices(partitions, disk_devices)
+                if partitions != old_partitions:
+                    # something changed
+                    print_partitions(partitions)
+                    update_disk_devices(partitions, disk_devices)
 
-        old_partitions = partitions
+                old_partitions = partitions
+                sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
+                loop_counter += 1
 
-        other_actions()
-        sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
+            time.sleep(1)
+    except KeyboardInterrupt as ex:
+        print_log('KeyboardInterrupt')
 
-        time.sleep(1)
+    unmount_fuse_mountpoint()
+
+    sys.exit()
 
 if __name__ == '__main__':
     main()
