@@ -1,4 +1,5 @@
 from errno import EINVAL, EIO
+from stat import filemode
 import sys
 import os
 
@@ -183,7 +184,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         ipart_data = self._find_file(name)
 
         if not ipart_data:
-            FuseOSError(ENOENT)
+            raise FuseOSError(ENOENT)
 
         now = time.time()
 
@@ -220,6 +221,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def read(self, path, size, offset, fh):
+        print()
+        print('read', locals())
+
         name = path
 
         if name.startswith(os.path.sep):
@@ -228,19 +232,28 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         ipart_data = self._find_file(name)
 
         if not ipart_data:
-            FuseOSError(ENOENT)
+            raise FuseOSError(ENOENT)
 
-        if offset >= self._get_file_size(ipart_data):
-            FuseOSError(EINVAL)
+        file_size = self._get_file_size(ipart_data)
+
+        print('offset', offset)
+        print('file_size', file_size)
+
+        if offset >= file_size:
+            raise FuseOSError(EINVAL)
 
         handle = self._get_handle(ipart_data)
 
         if handle is None:
-            FuseOSError(EIO)
+            raise FuseOSError(EIO)
 
-        os.lseek(handle, offset, os.SEEK_SET)
+        print('current offset', os.lseek(handle, 0, os.SEEK_CUR))
 
+        result = os.lseek(handle, offset, os.SEEK_SET)
+        print('lseek', result)
         print(handle)
+
+        print()
 
         return os.read(handle, size)
 
@@ -567,7 +580,7 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
 
 def run_fuse(disk_devices: dict):
     print('disk_devices', disk_devices)
-    FUSE(AmigaDiskDevicesFS(disk_devices), TMP_PATH_PREFIX, foreground=True, **{'allow_other': True})
+    FUSE(AmigaDiskDevicesFS(disk_devices), TMP_PATH_PREFIX, foreground=True, allow_other=True, direct_io=True)
 
 
 def init_fuse(disk_devices: dict):
