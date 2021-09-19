@@ -146,6 +146,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return 0
 
 
+    def _clear_pathname(self, pathname: str) -> str:
+        if pathname.startswith(os.path.sep):
+            pathname = pathname[1:]
+
+        return pathname
+
+
     # def _os_lstat(self, pathname: str):
     #     st = os.lstat(pathname)
 
@@ -176,10 +183,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if path in self._static_files:
             return self._static_files[path]
 
-        name = path
-
-        if name.startswith(os.path.sep):
-            name = name[1:]
+        name = self._clear_pathname(path)
 
         ipart_data = self._find_file(name)
 
@@ -224,10 +228,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         print()
         print('read', locals())
 
-        name = path
-
-        if name.startswith(os.path.sep):
-            name = name[1:]
+        name = self._clear_pathname(path)
 
         ipart_data = self._find_file(name)
 
@@ -239,8 +240,12 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         print('offset', offset)
         print('file_size', file_size)
 
-        if offset >= file_size:
-            raise FuseOSError(EINVAL)
+        if offset + size > file_size:
+            size = file_size - offset
+
+        if offset >= file_size or size <= 0:
+            return b''
+            # raise FuseOSError(EINVAL)
 
         handle = self._get_handle(ipart_data)
 
@@ -255,7 +260,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         print()
 
-        return os.read(handle, size)
+        read_res = os.read(handle, size)
+
+        print('read_res', read_res)
+
+        return read_res
 
         # raise Exception('read')
 
