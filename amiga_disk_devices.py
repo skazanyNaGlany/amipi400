@@ -44,8 +44,10 @@ ADF_BOOTBLOCK = numpy.dtype([
     ('Chksum',      numpy.uint32            ),
     ('Rootblock',   numpy.uint32            )
 ])
-MAIN_LOOP_MAX_COUNTER = 1
+MAIN_LOOP_MAX_COUNTER = 0
+# MAIN_LOOP_MAX_COUNTER = 1
 
+fs_instance = None
 
 class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def __init__(self, disk_devices: dict):
@@ -72,6 +74,22 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     release = None
     releasedir = None
     statfs = None
+
+
+    def set_disk_devices(self, disk_devices: dict):
+        self._disk_devices = disk_devices
+
+        self._flush_handles()
+
+
+    def _flush_handles(self):
+        for device_pathname in list(self._handles.keys()):
+            if device_pathname not in self._disk_devices:
+                handle = self._handles[device_pathname]
+
+                os.close(handle)
+
+                del self._handles[device_pathname]
 
 
     def _close_handles(self):
@@ -119,6 +137,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def getattr(self, path, fh=None):
+        self._flush_handles()
+
         if path in self._static_files:
             return self._static_files[path]
 
@@ -140,6 +160,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def read(self, path, size, offset, fh):
+        self._flush_handles()
+
         name = self._clear_pathname(path)
 
         ipart_data = self._find_file(name)
@@ -420,7 +442,11 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
 
 
 def run_fuse(disk_devices: dict):
-    FUSE(AmigaDiskDevicesFS(disk_devices), TMP_PATH_PREFIX, foreground=True, allow_other=True, direct_io=True)
+    global fs_instance
+
+    fs_instance = AmigaDiskDevicesFS(disk_devices)
+
+    FUSE(fs_instance, TMP_PATH_PREFIX, foreground=True, allow_other=True, direct_io=True)
 
 
 def init_fuse(disk_devices: dict):
@@ -440,6 +466,15 @@ def unmount_fuse_mountpoint():
     ))
 
 
+def affect_fs_disk_devices(disk_devices: dict):
+    global fs_instance
+
+    if not fs_instance:
+        return
+
+    fs_instance.set_disk_devices(disk_devices)
+
+
 def main():
     partitions = None
     old_partitions = None
@@ -452,20 +487,21 @@ def main():
 
     print_app_version()
     init_logger()
-    logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.DEBUG)
     check_pre_requirements()
     configure_system()
     init_fuse(disk_devices)
 
     try:
         while True:
-            if loop_counter < MAIN_LOOP_MAX_COUNTER:
+            if not MAIN_LOOP_MAX_COUNTER or loop_counter < MAIN_LOOP_MAX_COUNTER:
                 partitions = get_partitions2()
 
                 if partitions != old_partitions:
                     # something changed
                     print_partitions(partitions)
                     update_disk_devices(partitions, disk_devices)
+                    affect_fs_disk_devices(disk_devices)
 
                 old_partitions = partitions
                 sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
