@@ -139,9 +139,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def read(self, path, size, offset, fh):
-        print()
-        print('read', locals())
-
         name = self._clear_pathname(path)
 
         ipart_data = self._find_file(name)
@@ -151,36 +148,20 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         file_size = self._get_file_size(ipart_data)
 
-        print('offset', offset)
-        print('file_size', file_size)
-
         if offset + size > file_size:
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
             return b''
-            # raise FuseOSError(EINVAL)
 
         handle = self._get_handle(ipart_data)
 
         if handle is None:
             raise FuseOSError(EIO)
 
-        print('current offset', os.lseek(handle, 0, os.SEEK_CUR))
+        os.lseek(handle, offset, os.SEEK_SET)
 
-        result = os.lseek(handle, offset, os.SEEK_SET)
-        print('lseek', result)
-        print(handle)
-
-        print()
-
-        read_res = os.read(handle, size)
-
-        print('read_res', read_res)
-
-        return read_res
-
-        # raise Exception('read')
+        return os.read(handle, size)
 
 
     def readdir(self, path, fh):
@@ -219,10 +200,6 @@ def init_logger():
     print('Logging to ' + LOG_PATHNAME)
 
     logzero.logfile(LOG_PATHNAME, maxBytes=1e6, backupCount=3, disableStderrLogger=True)
-
-
-def init_logging():
-    logging.basicConfig(level=logging.DEBUG)
 
 
 def print_app_version():
@@ -427,7 +404,6 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
 
 
 def run_fuse(disk_devices: dict):
-    print('disk_devices', disk_devices)
     FUSE(AmigaDiskDevicesFS(disk_devices), TMP_PATH_PREFIX, foreground=True, allow_other=True, direct_io=True)
 
 
@@ -460,7 +436,7 @@ def main():
 
     print_app_version()
     init_logger()
-    init_logging()
+    # logging.basicConfig(level=logging.DEBUG)
     check_pre_requirements()
     configure_system()
     init_fuse(disk_devices)
