@@ -313,11 +313,11 @@ def sync(sync_disks_ts: int, sync_process):
 
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
-    pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)"'
+    pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)"'
     ret = OrderedDict()
 
-    # lsblk -P -o name,size,type,mountpoint,label,path -n -b
-    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path', '-n', '-b', _out=lsblk_buf)
+    # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype -n -b
+    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype', '-n', '-b', _out=lsblk_buf)
 
     for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
@@ -340,7 +340,9 @@ def get_partitions2() -> OrderedDict:
             'device': full_path,
             'is_floppy_drive': False,
             'size': int(found[1]) if found[1] else 0,
-            'type': found[2]
+            'type': found[2],
+            'fstype': found[6],
+            'pttype': found[7]
         }
 
         ret[full_path] = device_data
