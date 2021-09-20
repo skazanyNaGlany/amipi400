@@ -31,6 +31,8 @@ def test_read():
     while test_counter < max_test_counter:
         test_counter += 1
 
+        percent = 0
+
         print('test_read() test', test_counter, 'of', max_test_counter)
 
         original_file.seek(0)
@@ -50,13 +52,20 @@ def test_read():
             assert original_chunk == add_chunk
             assert original_file.tell() == add_file.tell()
 
+            current_percent = int(add_file.tell() / add_file_size * 100)
+
+            if percent != current_percent:
+                print(current_percent, '%')
+
+            percent = current_percent
+
     original_file.close()
     add_file.close()
 
 
 def test_random_read():
     test_counter = 0
-    max_test_counter = 10000
+    max_test_counter = 1000
 
     original_file_size = os.path.getsize(ORIGINAL_FILE)
     add_file_size = os.path.getsize(ADD_FILE)
@@ -102,7 +111,7 @@ def test_random_read():
 
 
 def main():
-    # test_read()
+    test_read()
     test_random_read()
 
 
