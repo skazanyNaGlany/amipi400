@@ -88,7 +88,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             return self._handles[device]
 
         try:
-            self._handles[device] = os.open(device, os.O_RDWR)
+            # self._handles[device] = os.open(device, os.O_RDWR | os.O_SYNC | os.O_DIRECT)
+            self._handles[device] = os.open(device, os.O_RDWR | os.O_SYNC)
         except:
             return None
 
@@ -436,7 +437,7 @@ def main():
 
     print_app_version()
     init_logger()
-    # logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG)
     check_pre_requirements()
     configure_system()
     init_fuse(disk_devices)
