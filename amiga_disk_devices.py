@@ -64,6 +64,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             )
         }
         self._handles = {}
+        self._mutex = threading.Lock()
+
 
     access = None
     flush = None
@@ -85,33 +87,37 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def _flush_handles(self):
         for device_pathname in list(self._handles.keys()):
             if device_pathname not in self._disk_devices:
-                handle = self._handles[device_pathname]
-
-                os.close(handle)
-
-                del self._handles[device_pathname]
+                self._close_handle(device_pathname)
 
 
     def _close_handles(self):
-        for device_pathname, handle in self._handles.items():
-            os.close(handle)
-
-        self._handles = {}
+        for device_pathname in self._handles.keys():
+            self._close_handle(device_pathname)
 
 
-    def _get_handle(self, ipart_data) -> Optional[int]:
-        device = ipart_data['device']
+    def _close_handle(self, device_pathname: str) -> Optional[int]:
+        with self._mutex:
+            handle = self._handles[device_pathname]
 
-        if device in self._handles:
-            return self._handles[device]
+            try:
+                os.close(handle)
+            except:
+                pass
 
-        try:
-            # self._handles[device] = os.open(device, os.O_RDWR | os.O_SYNC | os.O_DIRECT)
-            self._handles[device] = os.open(device, os.O_RDWR | os.O_SYNC)
-        except:
-            return None
+            del self._handles[device_pathname]
 
-        return self._handles[device]
+
+    def _open_handle(self, device_pathname: str) -> Optional[int]:
+        with self._mutex:
+            if device_pathname in self._handles:
+                return self._handles[device_pathname]
+
+            try:
+                self._handles[device_pathname] = os.open(device_pathname, os.O_RDWR | os.O_SYNC)
+            except:
+                return None
+
+            return self._handles[device_pathname]
 
 
     def _find_file(self, public_name: str) -> Optional[dict]:
@@ -177,7 +183,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if offset >= file_size or size <= 0:
             return b''
 
-        handle = self._get_handle(ipart_data)
+        handle = self._open_handle(ipart_data['device'])
 
         if handle is None:
             raise FuseOSError(EIO)
@@ -188,6 +194,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def readdir(self, path, fh):
+        self._flush_handles()
+
         entries = [
             '.',
             '..'
@@ -431,9 +439,6 @@ def is_adf_header(header: bytes) -> bool:
     )
 
     if disk_type_other_bits != 0:
-        return False
-
-    if parsed_header['Rootblock'] not in [0, 880]:
         return False
 
     return True
