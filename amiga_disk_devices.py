@@ -82,26 +82,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     statfs = None
 
 
-    # def _transcode_device_pathname(self, ipart_data: dict):
-    #     pathname = ipart_data['device'].replace(os.path.sep, '__')
-
-    #     if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
-    #         pathname += '.adf'
-
-    #     return pathname
-
-
-    # def _transcode_disk_devices(self):
-    #     transcoded = []
-
-    #     for ipart_dev, ipart_data in self._disk_devices.items():
-    #         transcoded.append(
-    #             self._transcode_device_pathname(ipart_data)
-    #         )
-
-    #     return transcoded
-
-
     def _close_handles(self):
         for device_pathname, handle in self._handles.items():
             os.close(handle)
@@ -153,32 +133,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return pathname
 
 
-    # def _os_lstat(self, pathname: str):
-    #     st = os.lstat(pathname)
-
-    #     return dict((key, getattr(st, key)) for key in (
-    #         'st_atime', 'st_ctime', 'st_gid', 'st_mode', 'st_mtime',
-    #         'st_nlink', 'st_size', 'st_uid'))
-
-
-    # def chmod(self, path, mode):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('chmod')
-
-
-    # def chown(self, path, uid, gid):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('chown')
-
-
-    # def create(self, path, mode):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('create')
-
-
     def getattr(self, path, fh=None):
         if path in self._static_files:
             return self._static_files[path]
@@ -198,30 +152,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                     st_ctime=now,
                     st_mtime=now,
                     st_atime=now)
-
-
-    # # def getxattr(self, path, name, position=0):
-    # #     pass
-    # #     # print(locals())
-    # #     # raise Exception('getxattr')
-
-
-    # def listxattr(self, path):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('listxattr')
-
-
-    # def mkdir(self, path, mode):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('mkdir')
-
-
-    # def open(self, path, flags):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('open')
 
 
     def read(self, path, size, offset, fh):
@@ -284,81 +214,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             )
 
         return entries
-
-        # print(locals())
-        # print(self._disk_devices)
-        # pass
-        # print(locals())
-        # raise Exception('readdir')
-
-
-    # def readlink(self, path):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('readlink')
-
-
-    # def removexattr(self, path, name):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('removexattr')
-
-
-    # def rename(self, old, new):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('rename')
-
-
-    # def rmdir(self, path):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('rmdir')
-
-
-    # def setxattr(self, path, name, value, options, position=0):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('setxattr')
-
-
-    # def statfs(self, path):
-    #     pass
-    #     # print(locals())
-    #     # print_log(locals())
-    #     # raise Exception('statfs')
-
-    #     # return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
-
-
-    # def symlink(self, target, source):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('symlink')
-
-
-    # def truncate(self, path, length, fh=None):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('truncate')
-
-
-    # def unlink(self, path):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('unlink')
-
-
-    # def utimens(self, path, times=None):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('utimens')
-
-
-    # def write(self, path, data, offset, fh):
-    #     pass
-    #     # print(locals())
-    #     # raise Exception('write')
 
 
     def destroy(self, path):
