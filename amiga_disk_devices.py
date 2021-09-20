@@ -269,7 +269,8 @@ def check_system_binaries():
         'sysctl',
         'swapoff',
         'clear',
-        'blockdev'
+        'blockdev',
+        'ufiformat'
     ]
 
     for ibin in bins:
@@ -495,6 +496,61 @@ def affect_fs_disk_devices(disk_devices: dict):
     fs_instance.set_disk_devices(disk_devices)
 
 
+def find_physical_floppy_drives():
+    ufiformat_buf = StringIO()
+    ret = []
+
+    # ufiformat --inquire --quiet
+    sh.ufiformat('--inquire', '--quiet', _out=ufiformat_buf)
+
+    for line in ufiformat_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        parts = line.split()
+
+        if len(parts) != 2:
+            continue
+
+        device = parts[0]
+
+        if not os.path.exists(device) or not os.path.isfile(device):
+            ret.append(device)
+
+    return ret
+
+
+def update_physical_floppy_drives(physical_floppy_drives: OrderedDict):
+    print_log('Getting information about physical floppy drives')
+
+    index = 0
+
+    for device in sorted(find_physical_floppy_drives()):
+        physical_floppy_drives[device] = {
+            'index': index,
+            'device': device
+        }
+
+        index += 1
+
+
+def print_physical_floppy_drives(physical_floppy_drives: OrderedDict):
+    if not physical_floppy_drives:
+        return
+
+    print_log('Physical floppy drives:')
+
+    for key, drive_data in physical_floppy_drives.items():
+        print_log(key)
+
+        print_log('  index: ' + str(drive_data['index']))
+        print_log('  device: ' + drive_data['device'])
+
+        print_log()
+
+
 def main():
     partitions = None
     old_partitions = None
@@ -502,6 +558,7 @@ def main():
     sync_process = None
     disk_devices = {}
     loop_counter = 0
+    physical_floppy_drives = OrderedDict()
 
     os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -510,6 +567,8 @@ def main():
     # logging.basicConfig(level=logging.DEBUG)
     check_pre_requirements()
     configure_system()
+    update_physical_floppy_drives(physical_floppy_drives)
+    print_physical_floppy_drives(physical_floppy_drives)
     init_fuse(disk_devices)
 
     try:
