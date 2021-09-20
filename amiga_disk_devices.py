@@ -239,12 +239,27 @@ def check_pre_requirements():
 def configure_system():
     print_log('Configuring system')
 
+    disable_swap()
+    set_cache_pressure()
+
+
+def disable_swap():
+    print_log('Disable swap')
+    os.system('swapoff -a')
+
+
+def set_cache_pressure():
+    print_log('Set cache pressure')
+    os.system('sysctl -q vm.vfs_cache_pressure=200')
+
 
 def check_system_binaries():
     print_log('Checking system binaries')
 
     bins = [
         'lsblk',
+        'sysctl',
+        'swapoff',
         'clear',
         'blockdev'
     ]
