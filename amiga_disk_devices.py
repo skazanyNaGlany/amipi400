@@ -51,11 +51,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def __init__(self, disk_devices: dict):
         self._now = time.time()
         self._disk_devices = disk_devices
-        # self._static_files = {
-        #     '/': {
-        #         'real_pathname': TMP_PATH_PREFIX
-        #     }
-        # }
         self._static_files = {
             '/': dict(
                 st_mode=(S_IFDIR | 0o444),
@@ -63,14 +58,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 st_mtime=self._now,
                 st_atime=self._now,
                 st_nlink=2,
-                # st_gid=0,
-                # st_uid=0,
                 st_size=4096
             )
         }
         self._handles = {}
 
-    # Disable unused operations:
     access = None
     flush = None
     getxattr = None
@@ -101,14 +93,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             return None
 
         return self._handles[device]
-
-
-    def _disk_device_exists(self, public_name: str):
-        for ipart_dev, ipart_data in self._disk_devices.items():
-            if ipart_data['public_name'] == public_name:
-                return True
-
-        return False
 
 
     def _find_file(self, public_name: str) -> Optional[dict]:
@@ -462,14 +446,6 @@ def unmount_fuse_mountpoint():
     os.system('umount {dir}'.format(
         dir=TMP_PATH_PREFIX
     ))
-
-
-def flush_default_logger():
-    handlers = logging.getLogger().handlers
-
-    if handlers and len(handlers) > 1:
-        print('DDDDDDDDDD2')
-        handlers[0].flush()
 
 
 def main():
