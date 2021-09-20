@@ -131,7 +131,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         now = time.time()
 
-        return dict(st_mode=(S_IFREG | 0o666),
+        return dict(st_mode=(S_IFREG | 0o444),
                     st_nlink=1,
                     st_size=self._get_file_size(ipart_data),
                     st_ctime=now,
