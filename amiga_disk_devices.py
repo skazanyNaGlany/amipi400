@@ -51,20 +51,21 @@ fs_instance = None
 
 class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def __init__(self, disk_devices: dict):
-        self._now = time.time()
+        self._instance_time = time.time()
         self._disk_devices = disk_devices
         self._static_files = {
             '/': dict(
                 st_mode=(S_IFDIR | 0o444),
-                st_ctime=self._now,
-                st_mtime=self._now,
-                st_atime=self._now,
+                st_ctime=self._instance_time,
+                st_mtime=self._instance_time,
+                st_atime=self._instance_time,
                 st_nlink=2,
                 st_size=4096
             )
         }
         self._handles = {}
         self._mutex = threading.Lock()
+        self._access_times = {}
 
 
     access = None
@@ -106,6 +107,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
             del self._handles[device_pathname]
 
+            try:
+                del self._access_times[device_pathname]
+            except:
+                pass
+
 
     def _open_handle(self, device_pathname: str) -> Optional[int]:
         with self._mutex:
@@ -135,6 +141,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return 0
 
 
+    def _save_file_access_time(self, device_pathname: str):
+        self._access_times[device_pathname] = time.time()
+
+
     def _clear_pathname(self, pathname: str) -> str:
         if pathname.startswith(os.path.sep):
             pathname = pathname[1:]
@@ -155,14 +165,20 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
-        now = time.time()
+        access_time = self._instance_time
+
+        try:
+            access_time = self._access_times[ipart_data['device']]
+        except:
+            pass
 
         return dict(st_mode=(S_IFREG | 0o444),
                     st_nlink=1,
                     st_size=self._get_file_size(ipart_data),
-                    st_ctime=now,
-                    st_mtime=now,
-                    st_atime=now)
+                    st_ctime=self._instance_time,
+                    st_mtime=self._instance_time,
+                    st_atime=access_time
+                )
 
 
     def read(self, path, size, offset, fh):
@@ -174,6 +190,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if not ipart_data:
             raise FuseOSError(ENOENT)
+
+        self._save_file_access_time(ipart_data['device'])
 
         file_size = self._get_file_size(ipart_data)
 
