@@ -395,28 +395,13 @@ def device_get_public_name(ipart_data: dict):
     return pathname
 
 
-def get_physical_drive_index(device_pathname: str, physical_floppy_drives: OrderedDict) -> Optional[int]:
-    if device_pathname not in physical_floppy_drives:
-        return None
-
-    return physical_floppy_drives[device_pathname]['index']
-
-
-def is_adf_in_real_drive(index: int, disk_devices: dict) -> bool:
-    for device_pathname, device_data in disk_devices.items():
-        if device_data['index'] == index:
-            return True
-
-    return False
-
-
 def cleanup_disk_devices(partitions: dict, disk_devices: dict):
     for ipart_dev in list(disk_devices.keys()):
         if ipart_dev not in partitions:
             del disk_devices[ipart_dev]
 
 
-def add_disk_devices(partitions: dict, disk_devices: dict, physical_floppy_drives: OrderedDict):
+def add_disk_devices(partitions: dict, disk_devices: dict):
     for ipart_dev, ipart_data in partitions.items():
         if ipart_dev in disk_devices:
             continue
@@ -430,45 +415,18 @@ def add_disk_devices(partitions: dict, disk_devices: dict, physical_floppy_drive
         if ipart_data['fstype'] or ipart_data['pttype']:
             continue
 
-        header = read_file_header(ipart_dev)
+        print_log('{filename} using as ADF'.format(
+            filename=ipart_dev
+        ))
 
-        if not header or len(header) < 512:
-            print_log('Cannot read header from {filename}'.format(
-                filename=ipart_dev
-            ))
+        disk_devices[ipart_dev] = ipart_data.copy()
+        disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
+        disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
 
-            continue
-
-        index = get_physical_drive_index(ipart_dev, physical_floppy_drives)
-        is_adf = is_adf_header(header)
-
-        if not is_adf:
-            # HACK some games like Pinball Dreams do not have a valid ADF
-            # header at disk other than 0
-            # check ifuser inserted floppy with valid ADF into real floppy
-            # drive at index 0
-            if is_adf_in_real_drive(0, disk_devices) and index > 0:
-                is_adf = True
-
-        if is_adf:
-            print_log('{filename} using as ADF'.format(
-                filename=ipart_dev
-            ))
-
-            disk_devices[ipart_dev] = ipart_data.copy()
-            disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
-            disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
-            disk_devices[ipart_dev]['index'] = index
-
-            set_device_read_a_head_sectors(ipart_dev, 0)
+        set_device_read_a_head_sectors(ipart_dev, 0)
 
 
 def set_device_read_a_head_sectors(device: str, sectors: int):
-    print_log('Setting read-a-head on {pathname} to {sectors} sectors'.format(
-        pathname=device,
-        sectors=sectors
-    ))
-
     os.system('blockdev --setra {sectors} {device}'.format(
         sectors=sectors,
         device=device
@@ -507,9 +465,9 @@ def read_file_header(filename: str) -> Optional[bytes]:
         return f.read(512)
 
 
-def update_disk_devices(partitions: dict, disk_devices: dict, physical_floppy_drives: OrderedDict):
+def update_disk_devices(partitions: dict, disk_devices: dict):
     cleanup_disk_devices(partitions, disk_devices)
-    add_disk_devices(partitions, disk_devices, physical_floppy_drives)
+    add_disk_devices(partitions, disk_devices)
 
 
 def run_fuse(disk_devices: dict):
@@ -546,61 +504,6 @@ def affect_fs_disk_devices(disk_devices: dict):
     fs_instance.set_disk_devices(disk_devices)
 
 
-def find_physical_floppy_drives():
-    ufiformat_buf = StringIO()
-    ret = []
-
-    # ufiformat --inquire --quiet
-    sh.ufiformat('--inquire', '--quiet', _out=ufiformat_buf)
-
-    for line in ufiformat_buf.getvalue().splitlines():
-        line = line.strip()
-
-        if not line:
-            continue
-
-        parts = line.split()
-
-        if len(parts) != 2:
-            continue
-
-        device = parts[0]
-
-        if not os.path.exists(device) or not os.path.isfile(device):
-            ret.append(device)
-
-    return ret
-
-
-def update_physical_floppy_drives(physical_floppy_drives: OrderedDict):
-    print_log('Getting information about physical floppy drives')
-
-    index = 0
-
-    for device in sorted(find_physical_floppy_drives()):
-        physical_floppy_drives[device] = {
-            'index': index,
-            'device': device
-        }
-
-        index += 1
-
-
-def print_physical_floppy_drives(physical_floppy_drives: OrderedDict):
-    if not physical_floppy_drives:
-        return
-
-    print_log('Physical floppy drives:')
-
-    for key, drive_data in physical_floppy_drives.items():
-        print_log(key)
-
-        print_log('  index: ' + str(drive_data['index']))
-        print_log('  device: ' + drive_data['device'])
-
-        print_log()
-
-
 def main():
     partitions = None
     old_partitions = None
@@ -608,7 +511,6 @@ def main():
     sync_process = None
     disk_devices = {}
     loop_counter = 0
-    physical_floppy_drives = OrderedDict()
 
     os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
 
@@ -617,8 +519,6 @@ def main():
     # logging.basicConfig(level=logging.DEBUG)
     check_pre_requirements()
     configure_system()
-    update_physical_floppy_drives(physical_floppy_drives)
-    print_physical_floppy_drives(physical_floppy_drives)
     init_fuse(disk_devices)
 
     try:
@@ -629,14 +529,16 @@ def main():
                 if partitions != old_partitions:
                     # something changed
                     print_partitions(partitions)
-                    update_disk_devices(partitions, disk_devices, physical_floppy_drives)
+                    update_disk_devices(partitions, disk_devices)
                     affect_fs_disk_devices(disk_devices)
 
                 old_partitions = partitions
                 sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
                 loop_counter += 1
 
-            time.sleep(1)
+            time.sleep(100 / 1000)
+            time.sleep(0)
+            # time.sleep(1)
     except KeyboardInterrupt as ex:
         print_log('KeyboardInterrupt')
 
