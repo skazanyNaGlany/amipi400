@@ -1,4 +1,4 @@
-from errno import EINVAL, EIO
+from errno import EINVAL, EIO, ENOSPC, EROFS
 from stat import filemode
 import sys
 import os
@@ -146,7 +146,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return None
 
 
-    def _get_file_size(self, ipart_data: dict) -> int:
+    def _get_max_file_size(self, ipart_data: dict) -> int:
         if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
             return 901120
 
@@ -221,7 +221,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         return dict(st_mode=(S_IFREG | perm_int_mask),
                     st_nlink=1,
-                    st_size=self._get_file_size(ipart_data),
+                    st_size=self._get_max_file_size(ipart_data),
                     st_ctime=self._instance_time,
                     st_mtime=self._instance_time,
                     st_atime=access_time
@@ -232,7 +232,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._flush_handles()
 
         name = self._clear_pathname(path)
-
         ipart_data = self._find_file(name)
 
         if not ipart_data:
@@ -240,7 +239,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         self._save_file_access_time(ipart_data['device'])
 
-        file_size = self._get_file_size(ipart_data)
+        file_size = self._get_max_file_size(ipart_data)
 
         if offset + size > file_size:
             size = file_size - offset
@@ -256,6 +255,44 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         os.lseek(handle, offset, os.SEEK_SET)
 
         return os.read(handle, size)
+
+
+    def truncate(self, path, length, fh=None):
+        # block devices cannot be truncated, so just return
+        return
+
+
+    def write(self, path, data, offset, fh):
+        self._flush_handles()
+
+        name = self._clear_pathname(path)
+        ipart_data = self._find_file(name)
+
+        if not ipart_data:
+            raise FuseOSError(ENOENT)
+
+        if not ipart_data['is_writable']:
+            raise FuseOSError(EROFS)
+
+        self._save_file_access_time(ipart_data['device'])
+
+        max_file_size = self._get_max_file_size(ipart_data)
+        len_data = len(data)
+
+        if offset + len_data > max_file_size or offset >= max_file_size:
+            raise FuseOSError(ENOSPC)
+
+        if len_data == 0:
+            return b''
+
+        handle = self._open_handle(ipart_data)
+
+        if handle is None:
+            raise FuseOSError(EIO)
+
+        os.lseek(handle, offset, os.SEEK_SET)
+
+        return os.write(handle, data)
 
 
     def readdir(self, path, fh):
