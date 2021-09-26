@@ -174,8 +174,8 @@ def check_pre_requirements():
 def configure_system():
     print_log('Configuring system')
 
-    disable_swap()
-    set_cache_pressure()
+    # disable_swap()
+    # set_cache_pressure()
 
 
 def disable_swap():
@@ -2719,4 +2719,5 @@ while True:
     audio_lag_fix()
     sync()
 
-    time.sleep(1)
+    time.sleep(100 / 1000)
+    time.sleep(0)

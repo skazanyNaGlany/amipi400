@@ -349,8 +349,8 @@ def check_pre_requirements():
 def configure_system():
     print_log('Configuring system')
 
-    disable_swap()
-    set_cache_pressure()
+    # disable_swap()
+    # set_cache_pressure()
 
 
 def disable_swap():
@@ -624,7 +624,6 @@ def main():
 
             time.sleep(100 / 1000)
             time.sleep(0)
-            # time.sleep(1)
     except KeyboardInterrupt as ex:
         print_log('KeyboardInterrupt')
 
