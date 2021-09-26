@@ -36,6 +36,7 @@ except ImportError as xie:
 APP_UNIXNAME = 'araamiga'
 APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
+AMIGA_DISK_DEVICES_MOUNTPOINT = os.path.join(tempfile.gettempdir(), 'amiga_disk_devices')
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
 INTERNAL_DRIVE_LABEL = 'Internal'
@@ -57,6 +58,10 @@ ENABLE_CD_PERM_FIX = True
 ENABLE_MOUSE_UNGRAB = False
 ENABLE_F12_OPEN_GUI = False
 ENABLE_PHYSICAL_FLOPPY_DRIVES = True
+ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
+ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
+ENABLE_SWAP = True
+ENABLE_SET_CACHE_PRESSURE = False
 AUDIO_LAG_STEP_0_SECS = 30
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -114,6 +119,8 @@ commands = []
 
 partitions = None
 old_partitions = None
+amiga_disk_devices = None
+old_amiga_disk_devices = None
 key_ctrl_pressed = False
 key_alt_pressed = False
 key_delete_pressed = False
@@ -174,16 +181,22 @@ def check_pre_requirements():
 def configure_system():
     print_log('Configuring system')
 
-    # disable_swap()
-    # set_cache_pressure()
+    disable_swap()
+    set_cache_pressure()
 
 
 def disable_swap():
+    if ENABLE_SWAP:
+        return
+
     print_log('Disable swap')
     os.system('swapoff -a')
 
 
 def set_cache_pressure():
+    if not ENABLE_SET_CACHE_PRESSURE:
+        return
+
     print_log('Set cache pressure')
     os.system('sysctl -q vm.vfs_cache_pressure=200')
 
@@ -944,6 +957,49 @@ def get_partitions2() -> OrderedDict:
     return ret
 
 
+def public_name_to_system_pathname(public_name: str) -> str:
+    (name, ext) = os.path.splitext(public_name)
+
+    return name.replace('__', os.path.sep)
+
+
+def get_amiga_disk_devices() -> OrderedDict:
+    result = OrderedDict()
+
+    if not ENABLE_AMIGA_DISK_DEVICES_SUPPORT:
+        return result
+
+    with os.scandir(AMIGA_DISK_DEVICES_MOUNTPOINT) as it:
+        for entry in it:
+            if entry.name.startswith('.') or not entry.is_file():
+                continue
+
+            full_path = public_name_to_system_pathname(entry.name)
+
+            device_data = {
+                'mountpoint': AMIGA_DISK_DEVICES_MOUNTPOINT,
+                'internal_mountpoint': os.path.join(
+                    INTERNAL_MOUNTPOINTS_PATHNAME,
+                    entry.name
+                ),
+                'label': entry.name,
+                'config': None,
+                'device': full_path,
+                'is_floppy_drive': False,
+                'drive_index': get_physical_floppy_drive_index(full_path),
+                'public_pathname': os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, entry.name)
+            }
+
+            if device_data['mountpoint']:
+                device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
+
+            device_data['is_floppy_drive'] = is_device_physical_floppy(full_path)
+
+            result[full_path] = device_data
+
+    return result
+
+
 def get_relative_path(pathname: str) -> str:
     if pathname[0] == os.path.sep:
         return pathname[1:]
@@ -1193,6 +1249,13 @@ def unmount_partitions(partitions: dict, old_partitions: dict):
     return unmounted
 
 
+def get_physical_floppy_drive_index(device_pathname: str) -> Optional[int]:
+    if device_pathname not in physical_floppy_drives:
+        return None
+
+    return physical_floppy_drives[device_pathname]['index']
+
+
 def get_proper_floppy_index(filesystem_label: str, device_pathname: str) -> int:
     '''
     Return floppy drive index that will be used in the emulator (0, 1, 2, 3)
@@ -1204,7 +1267,7 @@ def get_proper_floppy_index(filesystem_label: str, device_pathname: str) -> int:
     if not ENABLE_PHYSICAL_FLOPPY_DRIVES or device_pathname not in physical_floppy_drives:
         return get_label_floppy_index(filesystem_label)
 
-    return physical_floppy_drives[device_pathname]['index']
+    return get_physical_floppy_drive_index(device_pathname)
 
 
 def is_device_physical_floppy(device_pathname: str) -> bool:
@@ -1553,6 +1616,50 @@ def process_other_mounted(partitions: dict):
     return attached
 
 
+def cleanup_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: dict):
+    if not old_amiga_disk_devices:
+        return
+
+    for device_pathname in list(old_amiga_disk_devices.keys()):
+        if device_pathname not in amiga_disk_devices:
+            drive_index = old_amiga_disk_devices[device_pathname]['drive_index']
+
+            detach_floppy(drive_index)
+            update_floppy_drive_sound(drive_index)
+
+
+def attach_amiga_disk_devices(amiga_disk_devices: dict):
+    attached = []
+    attached_indexes = []
+
+    for device_pathname, device_data in amiga_disk_devices.items():
+        drive_index = device_data['drive_index']
+
+        if drive_index in attached_indexes:
+            # attach only one floppy per index
+            continue
+
+        if drive_index >= MAX_FLOPPIES:
+            continue
+
+        if floppies[drive_index]:
+            # already attached at index
+            continue
+
+        if attach_mountpoint_floppy(device_pathname, device_data, device_data['public_pathname']):
+            update_floppy_drive_sound(
+                drive_index
+            )
+
+            attached.append(device_pathname)
+            attached_indexes.append(drive_index)
+
+
+def process_amiga_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: OrderedDict):
+    cleanup_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
+    attach_amiga_disk_devices(amiga_disk_devices)
+
+
 def set_devices_read_a_head(devices: List[str], partitions: dict):
     devices = list(set(devices))
 
@@ -1568,10 +1675,11 @@ def set_devices_read_a_head(devices: List[str], partitions: dict):
         if not is_mountpoint_attached(ipart_data['mountpoint']):
             continue
 
-        if ipart_data['is_floppy_drive']:
-            set_device_read_a_head_sectors(ipart_dev, FLOPPY_DRIVE_READ_A_HEAD_SECTORS)
-        else:
-            set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
+        if not ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
+            if ipart_data['is_floppy_drive']:
+                set_device_read_a_head_sectors(ipart_dev, FLOPPY_DRIVE_READ_A_HEAD_SECTORS)
+            else:
+                set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
 
 
 def set_device_read_a_head_sectors(device: str, sectors: int):
@@ -2671,6 +2779,11 @@ while True:
     if partitions != old_partitions:
         failing_devices_ignore = []
 
+    amiga_disk_devices = get_amiga_disk_devices()
+
+    if amiga_disk_devices != old_amiga_disk_devices:
+        process_amiga_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
+
     unmounted = unmount_partitions(partitions, old_partitions)
 
     if unmounted:
@@ -2702,6 +2815,7 @@ while True:
         delete_unused_mountpoints()
 
     old_partitions = partitions
+    old_amiga_disk_devices = amiga_disk_devices
 
     process_changed_drives()
 
