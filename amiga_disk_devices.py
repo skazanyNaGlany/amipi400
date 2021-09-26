@@ -45,7 +45,6 @@ ADF_BOOTBLOCK = numpy.dtype([
     ('Rootblock',   numpy.uint32            )
 ])
 MAIN_LOOP_MAX_COUNTER = 0
-# MAIN_LOOP_MAX_COUNTER = 1
 
 fs_instance = None
 
@@ -508,15 +507,6 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
         disk_devices[ipart_dev] = ipart_data.copy()
         disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
         disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
-
-        set_device_read_a_head_sectors(ipart_dev, 0)
-
-
-def set_device_read_a_head_sectors(device: str, sectors: int):
-    os.system('blockdev --setra {sectors} {device}'.format(
-        sectors=sectors,
-        device=device
-    ))
 
 
 def is_adf_header(header: bytes) -> bool:
