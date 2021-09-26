@@ -113,13 +113,25 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 pass
 
 
-    def _open_handle(self, device_pathname: str) -> Optional[int]:
+    def _open_handle(self, ipart_data: dict) -> Optional[int]:
         with self._mutex:
+            device_pathname = ipart_data['device']
+
             if device_pathname in self._handles:
                 return self._handles[device_pathname]
 
+            is_readable = ipart_data['is_readable']
+            is_writable = ipart_data['is_writable']
+
+            mode = os.O_SYNC | os.O_DSYNC | os.O_RSYNC
+
+            if is_readable and is_writable:
+                mode |= os.O_RDWR
+            else:
+                mode |= os.O_RDONLY
+
             try:
-                self._handles[device_pathname] = os.open(device_pathname, os.O_RDWR | os.O_SYNC)
+                self._handles[device_pathname] = os.open(device_pathname, mode)
             except:
                 return None
 
@@ -236,7 +248,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if offset >= file_size or size <= 0:
             return b''
 
-        handle = self._open_handle(ipart_data['device'])
+        handle = self._open_handle(ipart_data)
 
         if handle is None:
             raise FuseOSError(EIO)
