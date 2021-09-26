@@ -152,6 +152,32 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return pathname
 
 
+    def _genrate_perm_int_mask(self,
+        user_can_read: bool,
+        user_can_write: bool,
+        user_can_execute: bool,
+        group_can_read: bool,
+        group_can_write: bool,
+        group_can_execute: bool,
+        other_can_read: bool,
+        other_can_write: bool,
+        other_can_execute: bool
+        ) -> int:
+        bin_string = ''
+
+        bin_string += str(int(user_can_read))
+        bin_string += str(int(user_can_write))
+        bin_string += str(int(user_can_execute))
+        bin_string += str(int(group_can_read))
+        bin_string += str(int(group_can_write))
+        bin_string += str(int(group_can_execute))
+        bin_string += str(int(other_can_read))
+        bin_string += str(int(other_can_write))
+        bin_string += str(int(other_can_execute))
+
+        return int(bin_string, 2)
+
+
     def getattr(self, path, fh=None):
         self._flush_handles()
 
@@ -172,7 +198,16 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         except:
             pass
 
-        return dict(st_mode=(S_IFREG | 0o444),
+        is_readable = ipart_data['is_readable']
+        is_writable = ipart_data['is_writable']
+
+        perm_int_mask = self._genrate_perm_int_mask(
+            is_readable, is_writable, False,
+            is_readable, is_writable, False,
+            is_readable, is_writable, False
+        )
+
+        return dict(st_mode=(S_IFREG | perm_int_mask),
                     st_nlink=1,
                     st_size=self._get_file_size(ipart_data),
                     st_ctime=self._instance_time,
@@ -331,11 +366,11 @@ def sync(sync_disks_ts: int, sync_process):
 
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
-    pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)"'
+    pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)" RO="(.*)"'
     ret = OrderedDict()
 
-    # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype -n -b
-    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype', '-n', '-b', _out=lsblk_buf)
+    # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype,ro -n -b
+    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype,ro', '-n', '-b', _out=lsblk_buf)
 
     for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
@@ -360,7 +395,9 @@ def get_partitions2() -> OrderedDict:
             'size': int(found[1]) if found[1] else 0,
             'type': found[2],
             'fstype': found[6],
-            'pttype': found[7]
+            'pttype': found[7],
+            'is_readable': True,    # in Linux device is reabable by default
+            'is_writable': bool(int(found[8])) == False
         }
 
         ret[full_path] = device_data
