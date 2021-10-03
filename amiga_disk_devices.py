@@ -152,8 +152,17 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return 0
 
 
-    def _save_file_access_time(self, device_pathname: str):
-        self._access_times[device_pathname] = time.time()
+    def _save_file_access_time(self, device_pathname: str, is_reading: bool = False) -> float:
+        current_time = str(int(time.time()))
+
+        if is_reading:
+            current_time += '.1'
+
+        print(float(current_time), flush=True)
+
+        self._access_times[device_pathname] = float(current_time)
+
+        return self._access_times[device_pathname]
 
 
     def _clear_pathname(self, pathname: str) -> str:
@@ -202,12 +211,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
-        access_time = self._instance_time
-
         try:
             access_time = self._access_times[ipart_data['device']]
         except:
-            pass
+            access_time = self._save_file_access_time(ipart_data['device'], False)
 
         is_readable = ipart_data['is_readable']
         is_writable = ipart_data['is_writable']
@@ -236,7 +243,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
-        self._save_file_access_time(ipart_data['device'])
+        self._save_file_access_time(ipart_data['device'], True)
 
         file_size = self._get_max_file_size(ipart_data)
 
@@ -244,16 +251,32 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
+            self._save_file_access_time(ipart_data['device'], False)
+
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
+            self._save_file_access_time(ipart_data['device'], False)
+
             raise FuseOSError(EIO)
 
         os.lseek(handle, offset, os.SEEK_SET)
 
-        return os.read(handle, size)
+        ex = None
+
+        try:
+            data = os.read(handle, size)
+        except Exception as x:
+            ex = x
+
+        self._save_file_access_time(ipart_data['device'], False)
+
+        if ex is not None:
+            raise ex
+
+        return data
 
 
     def truncate(self, path, length, fh=None):
@@ -273,7 +296,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data['is_writable']:
             raise FuseOSError(EROFS)
 
-        self._save_file_access_time(ipart_data['device'])
+        self._save_file_access_time(ipart_data['device'], False)
 
         max_file_size = self._get_max_file_size(ipart_data)
         len_data = len(data)
@@ -609,7 +632,7 @@ def main():
                     affect_fs_disk_devices(disk_devices)
 
                 old_partitions = partitions
-                sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
+                # sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
                 loop_counter += 1
 
             time.sleep(100 / 1000)
