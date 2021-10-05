@@ -39,6 +39,8 @@ SYNC_DISKS_SECS = 60 * 3
 FLOPPY_EXTENSIONS = ['*.adf']
 AMIGA_DEV_TYPE_FLOPPY = 1
 FLOPPY_DEVICE_SIZE = 1474560
+ATIME_FLAG_READING = 0b01
+ATIME_FLAG_WRITING = 0b10
 ADF_BOOTBLOCK = numpy.dtype([
     ('DiskType',    numpy.byte,     (4, )   ),
     ('Chksum',      numpy.uint32            ),
@@ -97,9 +99,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
     def _close_handle(self, device_pathname: str) -> Optional[int]:
         with self._mutex:
-            handle = self._handles[device_pathname]
-
             try:
+                handle = self._handles[device_pathname]
+
                 os.close(handle)
             except:
                 pass
@@ -152,13 +154,26 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return 0
 
 
-    def _save_file_access_time(self, device_pathname: str, is_reading: bool = False) -> float:
+    def _save_file_access_time(self,
+        device_pathname: str,
+        is_reading: bool = False,
+        is_writing: bool = False
+    ) -> float:
         current_time = str(int(time.time()))
+        flags = 0
 
         if is_reading:
-            current_time += '.1'
+            flags |= ATIME_FLAG_READING
 
-        print(float(current_time), flush=True)
+        if is_writing:
+            flags |= ATIME_FLAG_WRITING
+
+        current_time += '.' + str(flags)
+
+        # if is_reading:
+        #     current_time += '.1'
+
+        # print(float(current_time), flush=True)
 
         self._access_times[device_pathname] = float(current_time)
 
@@ -214,7 +229,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         try:
             access_time = self._access_times[ipart_data['device']]
         except:
-            access_time = self._save_file_access_time(ipart_data['device'], False)
+            access_time = self._save_file_access_time(
+                ipart_data['device'],
+                False,
+                False
+            )
 
         is_readable = ipart_data['is_readable']
         is_writable = ipart_data['is_writable']
@@ -243,7 +262,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
-        self._save_file_access_time(ipart_data['device'], True)
+        self._save_file_access_time(ipart_data['device'], is_reading=True)
 
         file_size = self._get_max_file_size(ipart_data)
 
@@ -251,14 +270,14 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
-            self._save_file_access_time(ipart_data['device'], False)
+            self._save_file_access_time(ipart_data['device'], is_reading=False)
 
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
-            self._save_file_access_time(ipart_data['device'], False)
+            self._save_file_access_time(ipart_data['device'], is_reading=False)
 
             raise FuseOSError(EIO)
 
@@ -271,7 +290,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         except Exception as x:
             ex = x
 
-        self._save_file_access_time(ipart_data['device'], False)
+        self._save_file_access_time(ipart_data['device'], is_reading=False)
 
         if ex is not None:
             raise ex
@@ -296,25 +315,43 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data['is_writable']:
             raise FuseOSError(EROFS)
 
-        self._save_file_access_time(ipart_data['device'], False)
+        self._save_file_access_time(ipart_data['device'], is_writing=True)
 
         max_file_size = self._get_max_file_size(ipart_data)
         len_data = len(data)
 
         if offset + len_data > max_file_size or offset >= max_file_size:
+            self._save_file_access_time(ipart_data['device'], is_writing=False)
+
             raise FuseOSError(ENOSPC)
 
         if len_data == 0:
+            self._save_file_access_time(ipart_data['device'], is_writing=False)
+
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
+            self._save_file_access_time(ipart_data['device'], is_writing=False)
+
             raise FuseOSError(EIO)
 
         os.lseek(handle, offset, os.SEEK_SET)
 
-        return os.write(handle, data)
+        ex = None
+
+        try:
+            result = os.write(handle, data)
+        except Exception as x:
+            ex = x
+
+        self._save_file_access_time(ipart_data['device'], is_writing=False)
+
+        if ex is not None:
+            raise ex
+
+        return result
 
 
     def readdir(self, path, fh):
