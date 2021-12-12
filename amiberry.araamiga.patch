@@ -59,15 +59,16 @@ index 00000000..07a27dfd
 +#endif  // ARAAMIGA_CONSTS_H_
 diff --git a/src/araamiga/externals.h b/src/araamiga/externals.h
 new file mode 100644
-index 00000000..20bf5613
+index 00000000..ceba853d
 --- /dev/null
 +++ b/src/araamiga/externals.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,14 @@
 +#ifndef ARAAMIGA_EXTERNALS_H_
 +#define ARAAMIGA_EXTERNALS_H_
 +
 +extern struct uae_prefs currprefs, changed_prefs;
 +extern int config_changed;
++extern int pause_emulation;
 +
 +void uae_quit(void);
 +void uae_reset(int hardreset, int keyboardreset);
@@ -78,10 +79,10 @@ index 00000000..20bf5613
 +#endif  // ARAAMIGA_EXTERNALS_H_
 diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
 new file mode 100644
-index 00000000..e9c32524
+index 00000000..dc872456
 --- /dev/null
 +++ b/src/araamiga/handler.cpp
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,41 @@
 +#include "consts.h"
 +#include "handler.h"
 +#include "ini-exec.h"
@@ -92,17 +93,12 @@ index 00000000..e9c32524
 +#include <unistd.h>
 +
 +
-+bool print_version = true;
++bool _print_version = true;
 +
 +
 +void SIGUSR1_handler(int signum)
 +{
-+    if (print_version) {
-+        my_printf("v%s\n", APP_VERSION);
-+
-+        print_version = false;
-+    }
-+
++    print_version();
 +    my_printf("processing received SIGUSR1 signal\n");
 +
 +    execute_ini_file(TMP_INI_FILE);
@@ -117,25 +113,37 @@ index 00000000..e9c32524
 +        my_printf("failed to set signal handler (SIGUSR1)\n");
 +    }
 +}
++
++
++void print_version() {
++    if (!_print_version) {
++        return;
++    }
++
++    _print_version = false;
++
++    my_printf("v%s\n", APP_VERSION);
++}
 diff --git a/src/araamiga/handler.h b/src/araamiga/handler.h
 new file mode 100644
-index 00000000..d276f220
+index 00000000..9231d227
 --- /dev/null
 +++ b/src/araamiga/handler.h
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +#ifndef ARAAMIGA_HANDLER_H_
 +#define ARAAMIGA_HANDLER_H_
 +
 +void SIGUSR1_handler(int signum);
 +void araamiga_handler_init();
++void print_version();
 +
 +#endif  // ARAAMIGA_HANDLER_H_
 diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
 new file mode 100644
-index 00000000..5d03930d
+index 00000000..e89f5ea3
 --- /dev/null
 +++ b/src/araamiga/ini-exec.cpp
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,150 @@
 +#include <string>
 +#include <cstring>
 +#include <fstream>
@@ -280,6 +288,9 @@ index 00000000..5d03930d
 +    else if (string_starts_with(raw_command, "config_changed ")) {
 +        config_changed = atoi(string_cut_from_string(raw_command, " ").c_str());
 +    }
++    else if (string_starts_with(raw_command, "pause_emulation ")) {
++        pause_emulation = atoi(string_cut_from_string(raw_command, " ").c_str());
++    }
 +
 +    return 0;
 +}
@@ -303,10 +314,10 @@ index 00000000..ead19c18
 +#endif  // ARAAMIGA_INI_EXEC_H_
 diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
 new file mode 100644
-index 00000000..c536b06e
+index 00000000..05eaf1f2
 --- /dev/null
 +++ b/src/araamiga/utils.cpp
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,95 @@
 +#include <iostream>
 +#include <sstream>
 +#include <vector>
@@ -397,12 +408,11 @@ index 00000000..c536b06e
 +
 +    va_start(args, fmt);
 +
-+    vsprintf(buffer, fmt, args);
++    vsnprintf(buffer, LINE_BUFFER_LEN, fmt, args);
 +    printf("[%s] %s", APP_NAME, buffer);
 +
 +    va_end(args);
 +}
-+
 diff --git a/src/araamiga/utils.h b/src/araamiga/utils.h
 new file mode 100644
 index 00000000..59f36c29
