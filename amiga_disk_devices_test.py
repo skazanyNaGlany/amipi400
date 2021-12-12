@@ -9,7 +9,8 @@ assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script
 
 ORIGINAL_FILE = 'Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 1 of 2).adf'
 ADD_FILE = '/tmp/amiga_disk_devices/__dev__sda.adf'
-
+# SDA_FILE = '/dev/sda'
+SDA_FILE = '/tmp/amiga_disk_devices/__dev__sda.adf'
 
 def test_read():
     test_counter = 0
@@ -110,9 +111,42 @@ def test_random_read():
     add_file.close()
 
 
+def test_dev_sda_read():
+    print('Reading:', SDA_FILE)
+
+    original_file = open(SDA_FILE, 'rb')
+    original_file_size = 901120
+    percent = 0
+
+    assert original_file
+
+    original_file.seek(0)
+
+    while True:
+        original_chunk = original_file.read(512)
+
+        if not original_chunk:
+            break
+
+        current_percent = int(original_file.tell() / original_file_size * 100)
+
+        if percent != current_percent:
+            print(current_percent, '%')
+
+        percent = current_percent
+
+        # print(len(original_chunk))
+
+    original_file.close()
+
+
 def main():
-    test_read()
-    test_random_read()
+    # test_read()
+    # test_random_read()
+    # test_dev_sda_read()
+    # test_dev_sda_read()
+    # test_dev_sda_read()
+    test_dev_sda_read()
 
 
 if __name__ == '__main__':
