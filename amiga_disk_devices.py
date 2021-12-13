@@ -34,6 +34,7 @@ APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
+DISABLE_SWAP = False
 SYNC_DISKS_SECS = 60 * 3
 AMIGA_DEV_TYPE_FLOPPY = 1
 FLOPPY_DEVICE_SIZE = 1474560
@@ -449,6 +450,9 @@ def configure_system():
 
 
 def disable_swap():
+    if not DISABLE_SWAP:
+        return
+
     print_log('Disable swap')
     os.system('swapoff -a')
 

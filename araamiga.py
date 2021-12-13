@@ -55,8 +55,8 @@ ENABLE_F12_OPEN_GUI = True
 ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
 ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
-ENABLE_SWAP = True
 ENABLE_SET_CACHE_PRESSURE = False
+DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
@@ -214,7 +214,7 @@ def configure_system():
 
 
 def disable_swap():
-    if ENABLE_SWAP:
+    if not DISABLE_SWAP:
         return
 
     print_log('Disable swap')
