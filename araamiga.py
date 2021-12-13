@@ -6,7 +6,6 @@ assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, "This script
 assert os.geteuid() == 0, "This script must be run as root"
 
 try:
-    import pyudev
     import psutil
     import sh
     import time
@@ -18,10 +17,9 @@ try:
     import subprocess
     import copy
     import logzero
-    import string
     import glob
+    import atexit
 
-    from pprint import pprint
     from collections import OrderedDict
     from typing import Optional, List
     from io import StringIO
@@ -39,30 +37,27 @@ TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 AMIGA_DISK_DEVICES_MOUNTPOINT = os.path.join(tempfile.gettempdir(), 'amiga_disk_devices')
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
-INTERNAL_DRIVE_LABEL = 'Internal'
-INTERNAL_DRIVE_PERMISSION = 'ro'
-INTERNAL_DRIVE_BOOT_PRIORITY = -128     # -128 means not bootable
 FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 20
 FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
 ENABLE_FLOPPY_DRIVE_SOUND = 'auto'
 ENABLE_HARD_DRIVES = True
-ENABLE_INTERNAL_DRIVE = False
 ENABLE_LOGGER = False
 ENABLE_TURN_OFF_MONITOR = False
-ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL = True
+ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL = True
 ENABLE_AUDIO_LAG_FIX = True
 ENABLE_FORCE_FSCK = 'auto'
 ENABLE_FORCE_RW = False
 ENABLE_CD_REPLACE_RESTART = False
 ENABLE_CD_PERM_FIX = True
 ENABLE_MOUSE_UNGRAB = False
-ENABLE_F12_OPEN_GUI = False
+ENABLE_F12_OPEN_GUI = True
+# ENABLE_F12_OPEN_GUI = False
 ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
-ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
+ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SWAP = True
 ENABLE_SET_CACHE_PRESSURE = False
-AUDIO_LAG_STEP_0_SECS = 30
+AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
 SYNC_DISKS_SECS = 60 * 3
 EMULATOR_EXE_PATHNAMES = [
@@ -110,23 +105,23 @@ CD_PERM_FIX_PATHNAME = '/dev/zero'
 FLOPPY_DRIVE_READ_A_HEAD_SECTORS = 0
 DEFAULT_READ_A_HEAD_SECTORS = 256
 WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
+ALT_GR_KEYCODE = 65027
+ALT_GR_UK_KEYCODE = 65406
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
 cd_drives = [None for x in range(MAX_CD_DRIVES)]
 drives_changed = False
 commands = []
-
 partitions = None
 old_partitions = None
 amiga_disk_devices = None
 old_amiga_disk_devices = None
 key_ctrl_pressed = False
 key_alt_pressed = False
-key_delete_pressed = False
-ctrl_alt_del_press_ts = 0
+key_alt_gr_pressed = False
+ctrl_alt_alt_gr_press_ts = 0
 tab_combo = []
-tab_combo_recording = False
 tab_pressed = False
 emulator_exe_pathname = None
 emulator_tmp_ini_pathname = None
@@ -143,8 +138,41 @@ audio_lag_fix_ts = 0
 sync_disks_ts = 0
 sync_process = None
 physical_floppy_drives = OrderedDict()
+amiberry_current_sound_mode = ''
+sound_output_state = 'exact'
+last_system_sound_mute_state = 'unmute'
+failing_devices_ignore = []
+keyboard_listener = None
 
-os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
+
+def mount_tmpfs():
+    print_log('Creating and monunting', TMP_PATH_PREFIX, 'as tmpfs')
+
+    if not os.path.exists(TMP_PATH_PREFIX):
+        os.makedirs(TMP_PATH_PREFIX, exist_ok=True)
+
+    err_code = os.system('chmod 0777 ' + TMP_PATH_PREFIX)
+
+    if err_code:
+        print_log('Cannot chmod', TMP_PATH_PREFIX, 'got', err_code, 'error code')
+
+    if os.path.ismount(TMP_PATH_PREFIX):
+        print_log(TMP_PATH_PREFIX, 'is already mounted, skipping')
+        return
+
+    err_code = os.system('mount -t tmpfs tmpfs ' + TMP_PATH_PREFIX)
+
+    if err_code:
+        print_log('Cannot mount', TMP_PATH_PREFIX, 'as tmpfs, got', err_code, 'error code')
+
+
+def umount_tmpfs():
+    print_log('Unmounting and removing', TMP_PATH_PREFIX)
+
+    err_code = os.system('umount -R ' + TMP_PATH_PREFIX)
+
+    if err_code:
+        print_log('Cannot umount', TMP_PATH_PREFIX, 'got', err_code, 'error code')
 
 
 def print_log(*args):
@@ -295,7 +323,6 @@ def check_system_binaries():
         'chmod',
         'killall',
         'lsblk',
-        'fincore',
         'sysctl',
         'swapoff',
         'xset',
@@ -307,7 +334,11 @@ def check_system_binaries():
         'wpa_supplicant',
         'rm',
         'ifconfig',
-        'ufiformat'
+        'ufiformat',
+        'iw',
+        'tee',
+        'sudo',
+        'amixer'
     ]
 
     for ibin in bins:
@@ -360,6 +391,7 @@ def keep_monitor_off_to_emulator(additional_seconds: int):
 
 
 def update_monitor_state():
+    # TODO limit execution once every second
     global monitor_off_timestamp
     global monitor_state
     global monitor_off_seconds
@@ -379,27 +411,27 @@ def update_monitor_state():
         keep_monitor_off(monitor_off_seconds)
 
 
-def ctrl_alt_del_keyboard_action():
+def ctrl_alt_alt_gr_keyboard_action():
     global key_ctrl_pressed
     global key_alt_pressed
-    global key_delete_pressed
-    global ctrl_alt_del_press_ts
+    global key_alt_gr_pressed
+    global ctrl_alt_alt_gr_press_ts
 
-    if key_ctrl_pressed and key_alt_pressed and key_delete_pressed:
+    if key_ctrl_pressed and key_alt_pressed and key_alt_gr_pressed:
         key_ctrl_pressed = False
         key_alt_pressed = False
-        key_delete_pressed = False
+        key_alt_gr_pressed = False
 
-        ctrl_alt_del_press_ts = int(time.time())
+        ctrl_alt_alt_gr_press_ts = int(time.time())
 
+        clear_system_cache()
         put_command('uae_reset 1,1')
-        # put_command('uae_reset 0,0')
-    elif not key_ctrl_pressed and not key_alt_pressed and not key_delete_pressed:
-        ctrl_alt_del_press_ts = 0
+    elif not key_ctrl_pressed and not key_alt_pressed and not key_alt_gr_pressed:
+        ctrl_alt_alt_gr_press_ts = 0
 
-    if ENABLE_CTRL_ALT_DEL_LONG_PRESS_KILL:
-        if ctrl_alt_del_press_ts and int(time.time()) - ctrl_alt_del_press_ts >= 3:
-            ctrl_alt_del_press_ts = 0
+    if ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL:
+        if ctrl_alt_alt_gr_press_ts and int(time.time()) - ctrl_alt_alt_gr_press_ts >= 3:
+            ctrl_alt_alt_gr_press_ts = 0
 
             kill_emulator()
 
@@ -801,7 +833,7 @@ def tab_combo_actions(partitions: dict):
 
 
 def keyboard_actions(partitions: dict):
-    ctrl_alt_del_keyboard_action()
+    ctrl_alt_alt_gr_keyboard_action()
     tab_combo_actions(partitions)
 
 
@@ -854,9 +886,7 @@ def audio_lag_fix():
         if current_ts - audio_lag_fix_ts <= AUDIO_LAG_STEP_0_SECS:
             return
 
-        put_command('cfgfile_parse_line_type_all amiberry.sound_pullmode=1')
-        put_command('cfgfile_parse_line_type_all sound_max_buff=8192')
-        put_command('config_changed 1')
+        run_audio_lag_fix_step_0()
 
         audio_lag_fix_step += 1
         audio_lag_fix_ts = current_ts
@@ -865,8 +895,7 @@ def audio_lag_fix():
         if current_ts - audio_lag_fix_ts <= AUDIO_LAG_STEP_1_SECS:
             return
 
-        put_command('cfgfile_parse_line_type_all sound_max_buff=16384')
-        put_command('config_changed 1')
+        run_audio_lag_fix_step_1()
 
         audio_lag_fix_step += 1
         audio_lag_fix_ts = current_ts
@@ -876,6 +905,38 @@ def audio_lag_fix():
         print_log('Apply audio lag fix, step={step}'.format(
             step=audio_lag_fix_step - 1
         ))
+
+
+def set_amiberry_sound_mode(sound_pullmode: int, sound_max_buff: int):
+    global amiberry_current_sound_mode
+
+    sign = str(sound_pullmode) + ',' + str(sound_max_buff)
+
+    if sign == amiberry_current_sound_mode:
+        return
+
+    amiberry_current_sound_mode = sign
+
+    if sound_pullmode is None and sound_max_buff is None:
+        return
+
+    if sound_pullmode is not None:
+        put_command('cfgfile_parse_line_type_all amiberry.sound_pullmode=' + str(sound_pullmode))
+
+    if sound_max_buff is not None:
+        put_command('cfgfile_parse_line_type_all sound_max_buff=' + str(sound_max_buff))
+
+    put_command('config_changed 1')
+
+
+def run_audio_lag_fix_step_0():
+    # original, working
+    set_amiberry_sound_mode(1, 8192)
+
+
+def run_audio_lag_fix_step_1():
+    # original, working
+    set_amiberry_sound_mode(None, 16384)
 
 
 def is_sync_running() -> bool:
@@ -969,42 +1030,38 @@ def get_amiga_disk_devices() -> OrderedDict:
     if not ENABLE_AMIGA_DISK_DEVICES_SUPPORT:
         return result
 
-    with os.scandir(AMIGA_DISK_DEVICES_MOUNTPOINT) as it:
-        for entry in it:
-            if entry.name.startswith('.') or not entry.is_file():
-                continue
+    try:
+        with os.scandir(AMIGA_DISK_DEVICES_MOUNTPOINT) as it:
+            for entry in it:
+                if entry.name.startswith('.') or not entry.is_file():
+                    continue
 
-            full_path = public_name_to_system_pathname(entry.name)
+                full_path = public_name_to_system_pathname(entry.name)
 
-            device_data = {
-                'mountpoint': AMIGA_DISK_DEVICES_MOUNTPOINT,
-                'internal_mountpoint': os.path.join(
-                    INTERNAL_MOUNTPOINTS_PATHNAME,
-                    entry.name
-                ),
-                'label': entry.name,
-                'config': None,
-                'device': full_path,
-                'is_floppy_drive': False,
-                'drive_index': get_physical_floppy_drive_index(full_path),
-                'public_pathname': os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, entry.name)
-            }
+                device_data = {
+                    'mountpoint': AMIGA_DISK_DEVICES_MOUNTPOINT,
+                    'internal_mountpoint': os.path.join(
+                        INTERNAL_MOUNTPOINTS_PATHNAME,
+                        entry.name
+                    ),
+                    'label': entry.name,
+                    'config': None,
+                    'device': full_path,
+                    'is_floppy_drive': False,
+                    'drive_index': get_physical_floppy_drive_index(full_path),
+                    'public_pathname': os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, entry.name)
+                }
 
-            if device_data['mountpoint']:
-                device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
+                if device_data['mountpoint']:
+                    device_data['config'] = get_mountpoint_config(device_data['mountpoint'])
 
-            device_data['is_floppy_drive'] = is_device_physical_floppy(full_path)
+                device_data['is_floppy_drive'] = is_device_physical_floppy(full_path)
 
-            result[full_path] = device_data
+                result[full_path] = device_data
+    except OSError:
+        pass
 
     return result
-
-
-def get_relative_path(pathname: str) -> str:
-    if pathname[0] == os.path.sep:
-        return pathname[1:]
-
-    return pathname
 
 
 def print_partitions(partitions: dict):
@@ -1091,6 +1148,13 @@ def print_physical_floppy_drives():
         print_log()
 
 
+def init_keyboard_listener():
+    global keyboard_listener
+
+    keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
+    keyboard_listener.start()
+
+
 def process_changed_drives():
     global drives_changed
 
@@ -1103,6 +1167,248 @@ def process_changed_drives():
         turn_off_monitor()
         kill_emulator()
         keep_monitor_off_to_emulator(5)
+
+
+# following two functions are useful for debugging
+def turn_numlock_on():
+    os.system('echo 1 | sudo tee /sys/class/leds/input?::numlock/brightness > /dev/null')
+
+
+def turn_numlock_off():
+    os.system('echo 0 | sudo tee /sys/class/leds/input?::numlock/brightness > /dev/null')
+
+
+def set_sound_output_state(state: str):
+    global sound_output_state
+
+    if sound_output_state == state:
+        return
+
+    # if state == 'interrupts':
+    #     turn_numlock_off()
+    # elif state == 'exact':
+    #     turn_numlock_on()
+
+    put_command('cfgfile_parse_line_type_all sound_output=' + state)
+    put_command('config_changed 1')
+
+    sound_output_state = state
+
+
+def mute_system_sound():
+    set_system_sound_mute_state('mute')
+
+
+def unmute_system_sound():
+    set_system_sound_mute_state('unmute')
+
+
+def set_system_sound_mute_state(state: str):
+    global last_system_sound_mute_state
+
+    if last_system_sound_mute_state == state:
+        return
+
+    last_system_sound_mute_state = state
+
+    os.system('amixer set Master ' + state)
+
+
+def disable_sound():
+    set_sound_output_state('interrupts')
+
+
+def enable_sound():
+    set_sound_output_state('exact')
+
+
+def is_caching_physical_floppy2() -> bool:
+    current_time = time.time()
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        if not floppy_data['diskstats_change_ts']:
+            continue
+
+        if current_time - floppy_data['diskstats_change_ts'] <= 4:
+            return True
+
+    return False
+
+
+def refresh_floppies_times() -> False:
+    global floppies
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        try:
+            file_time = os.stat(floppy_data['pathname'])
+        except FileNotFoundError as x:
+            print_log(str(x))
+            continue
+
+        floppy_data['prev_atime'] = floppy_data['atime']
+        floppy_data['atime'] = file_time.st_atime
+
+        floppy_data['prev_mtime'] = floppy_data['mtime']
+        floppy_data['mtime'] = file_time.st_mtime
+
+    return True
+
+
+def is_accessing_physical_floppy3():
+    current_time = time.time()
+    last_floppy_access_time_mode_0 = 0
+    last_floppy_access_time_mode_1 = 0
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        if floppy_data['using_amiga_disk_devices']:
+            if not floppy_data['atime']:
+                continue
+
+            if floppy_data['atime'] != floppy_data['prev_atime']:
+                return True
+
+            if floppy_data['atime'] > last_floppy_access_time_mode_0:
+                last_floppy_access_time_mode_0 = floppy_data['atime']
+        else:
+            if not floppy_data['diskstats_change_ts']:
+                continue
+
+            if floppy_data['diskstats_change_ts'] > last_floppy_access_time_mode_1:
+                last_floppy_access_time_mode_1 = floppy_data['diskstats_change_ts']
+
+    if last_floppy_access_time_mode_0:
+        if current_time - last_floppy_access_time_mode_0 <= 2:     # 3 better ?
+            return True
+
+    if last_floppy_access_time_mode_1:
+        if current_time - last_floppy_access_time_mode_1 <= 4:     # 3 better ?
+            return True
+
+    return False
+
+
+def get_floppy_basename_devices() -> list:
+    devices = []
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        devices.append(floppy_data['device_basename'])
+
+    return devices
+
+
+def get_devices_diskstats(basenames: list) -> dict:
+    diskstats = {}
+
+    with open('/proc/diskstats', 'r') as file:
+        lines = file.read().splitlines()
+
+        for iline in lines:
+            iline = iline.strip()
+
+            if not iline:
+                continue
+
+            parts = iline.split()
+
+            if len(parts) != 20:
+                continue
+
+            device_basename = parts[2]
+
+            if device_basename not in basenames:
+                continue
+
+            diskstats[device_basename] = iline
+
+    return diskstats
+
+
+def refresh_floppies_diskstats():
+    global floppies
+
+    basenames = get_floppy_basename_devices()
+
+    if not basenames:
+        return False
+
+    diskstats = get_devices_diskstats(basenames)
+    current_time = time.time()
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        device_basename = floppy_data['device_basename']
+
+        if device_basename not in diskstats:
+            continue
+
+        floppy_data['prev_diskstats'] = floppy_data['diskstats']
+        floppy_data['diskstats'] = diskstats[device_basename]
+
+        if floppy_data['prev_diskstats'] != floppy_data['diskstats']:
+            floppy_data['diskstats_change_ts'] = current_time
+
+    return True
+
+
+def is_writing_physical_floppy() -> bool:
+    current_time = time.time()
+    last_floppy_write_time = 0
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        if not floppy_data['mtime']:
+            continue
+
+        if floppy_data['mtime'] != floppy_data['prev_mtime']:
+            return True
+
+        if floppy_data['mtime'] > last_floppy_write_time:
+            last_floppy_write_time = floppy_data['mtime']
+
+    if last_floppy_write_time:
+        if current_time - last_floppy_write_time <= 4:
+            return True
+
+    return False
+
+
+def affect_paula_volume2():
+    refresh_floppies_times()
+    refresh_floppies_diskstats()
+
+    is_accessing = is_accessing_physical_floppy3()
+
+    if is_accessing:
+        is_caching = is_caching_physical_floppy2()
+
+        if is_caching:
+            mute_system_sound()
+            disable_sound()
+    else:
+        is_writing = is_writing_physical_floppy()
+
+        if is_writing:
+            mute_system_sound()
+            disable_sound()
+        else:
+            unmute_system_sound()
+            enable_sound()
 
 
 def send_SIGUSR1_signal():
@@ -1165,6 +1471,7 @@ def block_till_tmp_ini_exists():
 
 
 def execute_commands():
+    # TODO execute once a second
     global commands
 
     str_commands = ''
@@ -1646,7 +1953,12 @@ def attach_amiga_disk_devices(amiga_disk_devices: dict):
             # already attached at index
             continue
 
-        if attach_mountpoint_floppy(device_pathname, device_data, device_data['public_pathname']):
+        if attach_mountpoint_floppy(
+            device_pathname,
+            device_data,
+            device_data['public_pathname'],
+            True
+        ):
             update_floppy_drive_sound(
                 drive_index
             )
@@ -1879,10 +2191,6 @@ def detach_floppy(index: int, auto_commit: bool = False) -> dict:
     ))
     put_command('config_changed 1')
 
-    # put_command('disk_eject {index}'.format(
-    #     index=index
-    # ))
-
     if auto_commit:
         # some games like Dreamweb will fail to detect
         # new floppy when we change it too fast
@@ -1956,7 +2264,12 @@ def get_medium_file(
         return medium_files[0]
 
 
-def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
+def attach_mountpoint_floppy(
+    ipart_dev,
+    ipart_data,
+    force_file_pathname = None,
+    using_amiga_disk_devices = False
+):
     global floppies
 
     mountpoint = ipart_data['mountpoint']
@@ -1988,11 +2301,36 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
             'pathname': iadf,
             'mountpoint': mountpoint,
             'device': ipart_dev,
+            'device_basename': os.path.basename(ipart_dev),
             'file_size': os.path.getsize(iadf),
             'last_access_ts': 0,
             'last_cached_size': 0,
             'config': ipart_data['config'],
-            'medium': ipart_data
+            'medium': ipart_data,
+            'prev_atime': 0,
+            'atime': 0,
+            'prev_mtime': 0,
+            'mtime': 0,
+            'physical_floppy_reads': 0,
+            'physical_floppy_unreads': 0,
+            'is_reading': False,
+            'physical_floppy_writes': 0,
+            'physical_floppy_unwrites': 0,
+            'is_writing': False,
+            'prev_cached_percent': 0,
+            'cached_percent': 0,
+            'is_caching': False,
+            'cache_change_ts': 0,
+            'prev_vmtouch_graph': '',
+            'vmtouch_graph': '',
+            'device_busy': False,
+            'prev_device_busy': False,
+            'device_busy_change_ts': 0,
+            'device_io_counter': -1,
+            'diskstats': '',
+            'prev_diskstats': '',
+            'diskstats_change_ts': 0,
+            'using_amiga_disk_devices': using_amiga_disk_devices
         }
 
         put_command('cfgfile_parse_line_type_all floppy{index}={pathname}'.format(
@@ -2001,11 +2339,6 @@ def attach_mountpoint_floppy(ipart_dev, ipart_data, force_file_pathname = None):
         ))
 
         put_command('config_changed 1')
-
-        # put_command('disk_insert_force {df_no},{pathname},0'.format(
-        #     df_no=index,
-        #     pathname=iadf
-        # ))
 
         return True
     else:
@@ -2083,15 +2416,6 @@ def put_local_commit_command(sleep_seconds: int = 0):
 
 
 def put_command(command: str, reset: bool = False):
-    """
-    Available commands:
-    # ext_disk_eject <df_no>
-    # ext_disk_insert_force <df_no>,<pathname>,<1/0 write protected>
-    # uae_reset <1/0>,<1/0>
-    # uae_quit
-    # ext_hd_disk_dir_detach <hd_no>
-    # ext_hd_disk_dir_attach <device_name>,<pathname>,<1/0 bootable>
-    """
     global commands
 
     if reset:
@@ -2355,24 +2679,6 @@ def get_media_command_line_config():
     # cd drives
     str_cd_drives = get_cd_drives_command_line_config()
 
-    if ENABLE_INTERNAL_DRIVE and drive_index < MAX_DRIVES:
-        # add read-only internal drive
-        str_drives += '-s ' + format_filesystem2_string(
-            INTERNAL_DRIVE_PERMISSION,
-            drive_index,
-            INTERNAL_DRIVE_LABEL,
-            INTERNAL_MOUNTPOINTS_PATHNAME,
-            INTERNAL_DRIVE_BOOT_PRIORITY
-        ) + ' '
-
-        str_drives += ' -s ' + format_uaehf_dir_string(
-            drive_index,
-            INTERNAL_DRIVE_PERMISSION,
-            INTERNAL_DRIVE_LABEL,
-            INTERNAL_MOUNTPOINTS_PATHNAME,
-            INTERNAL_DRIVE_BOOT_PRIORITY
-        ) + ' '
-
     return {
         'floppies': str_floppies,
         'drives': str_drives,
@@ -2538,12 +2844,21 @@ def kill_emulator():
     except sh.ErrorReturnCode_1:
         print_log('No process found')
 
+
 def delete_unused_mountpoints():
     print_log('Delete unused mountpoints')
 
     pathname = os.path.join(INTERNAL_MOUNTPOINTS_PATHNAME, '*')
 
     os.system('rmdir ' + pathname)
+
+
+def clear_system_cache():
+    print_log('Clearing system cache')
+
+    os.system('sync')
+    os.system('echo 1 > /proc/sys/vm/drop_caches')
+    os.system('sync')
 
 
 def line_parts_to_dict(line_parts: List[str], maxsplit: int) -> dict:
@@ -2695,14 +3010,26 @@ def update_physical_floppy_drives():
         index += 1
 
 
+def is_alt_gr_key(key) -> bool:
+    if key == Key.alt_gr:
+        return True
+
+    if hasattr(key, 'vk'):
+        if key.vk == ALT_GR_KEYCODE:
+            return True
+        elif key.vk == ALT_GR_UK_KEYCODE:
+            return True
+
+    return False
+
+
 def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
-    global key_delete_pressed
+    global key_alt_gr_pressed
     global tab_pressed
-    global ctrl_alt_del_press_ts
+    global ctrl_alt_alt_gr_press_ts
     global tab_combo
-    global tab_combo_recording
 
     if key == Key.ctrl:
         key_ctrl_pressed = True
@@ -2710,8 +3037,8 @@ def on_key_press(key):
     if key == Key.alt:
         key_alt_pressed = True
 
-    if key == Key.delete:
-        key_delete_pressed = True
+    if is_alt_gr_key(key):
+        key_alt_gr_pressed = True
 
     if key == Key.tab:
         tab_pressed = True
@@ -2728,9 +3055,9 @@ def on_key_press(key):
 def on_key_release(key):
     global key_ctrl_pressed
     global key_alt_pressed
-    global key_delete_pressed
+    global key_alt_gr_pressed
     global tab_pressed
-    global ctrl_alt_del_press_ts
+    global ctrl_alt_alt_gr_press_ts
 
     if key == Key.ctrl:
         key_ctrl_pressed = False
@@ -2738,29 +3065,32 @@ def on_key_release(key):
     if key == Key.alt:
         key_alt_pressed = False
 
-    if key == Key.delete:
-        key_delete_pressed = False
+    if is_alt_gr_key(key):
+        key_alt_gr_pressed = False
 
     if key == Key.tab:
         tab_pressed = False
 
 
+def atexit_handler():
+    unmute_system_sound()
+    umount_tmpfs()
+
+
 print_app_version()
 init_logger()
+mount_tmpfs()
+atexit.register(atexit_handler)
 check_pre_requirements()
 configure_tmp_ini()
 configure_system()
 configure_volumes()
+clear_system_cache()
 delete_unused_mountpoints()
 connect_wifi()
-# disconnect_wifi()
 update_physical_floppy_drives()
 print_physical_floppy_drives()
-
-keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
-failing_devices_ignore = []
-
-keyboard_listener.start()
+init_keyboard_listener()
 
 # give the user one second so he can press
 # TAB key to enter system shell
@@ -2818,6 +3148,8 @@ while True:
     old_amiga_disk_devices = amiga_disk_devices
 
     process_changed_drives()
+
+    affect_paula_volume2()
 
     if commands:
         print_commands()
