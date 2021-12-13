@@ -200,10 +200,10 @@ def print_app_version():
 
 
 def check_pre_requirements():
+    check_system_binaries()
     check_emulator()
     check_kickstart()
     check_extended_kickstart()
-    check_system_binaries()
 
 
 def configure_system():
@@ -3058,10 +3058,10 @@ def atexit_handler():
 
 
 print_app_version()
+check_pre_requirements()
 init_logger()
 mount_tmpfs()
 atexit.register(atexit_handler)
-check_pre_requirements()
 configure_tmp_ini()
 configure_system()
 configure_volumes()

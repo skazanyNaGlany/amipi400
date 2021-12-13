@@ -707,12 +707,12 @@ def main():
     loop_counter = 0
 
     print_app_version()
+    check_pre_requirements()
     init_logger()
     unmount_fuse_mountpoint()
     mkdir_fuse_mountpoint()
     # uncomment this to enable FUSE logging
     # logging.basicConfig(level=logging.DEBUG)
-    check_pre_requirements()
     configure_system()
     init_fuse(disk_devices)
 
