@@ -13,3 +13,13 @@ Mounted new partitions
 Attaching "/tmp/araamiga/mountpoints/sda/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 2 of 2).adf" to DF0
 Attaching "/tmp/araamiga/mountpoints/sdb/install31.adf" to DF0
 Attaching "/tmp/araamiga/mountpoints/sda/Traps n Treasures (1993)(Starbyte)(En)[cr PSG](Disk 2 of 2).adf" to DF0
+
+
+
+Traceback (most recent call last):
+  File "araamiga.py", line 2882, in <module>
+    amiga_disk_devices = get_amiga_disk_devices()
+  File "araamiga.py", line 974, in get_amiga_disk_devices
+    with os.scandir(AMIGA_DISK_DEVICES_MOUNTPOINT) as it:
+OSError: [Errno 22] Invalid argument: '/tmp/amiga_disk_devices'
+
