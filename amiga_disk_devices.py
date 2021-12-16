@@ -20,7 +20,7 @@ try:
 
     from collections import OrderedDict
     from io import StringIO
-    from typing import Optional, List
+    from typing import Optional, List, Dict
     from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
     from errno import ENOENT
     from stat import S_IFDIR, S_IFREG
@@ -52,6 +52,10 @@ fs_instance = None
 
 
 class AmigaDiskDevicesFS(LoggingMixIn, Operations):
+    _handles: Dict[str, int]
+    _access_times: Dict[str, float]
+    _modification_times: Dict[str, float]
+
     def __init__(self, disk_devices: dict):
         self._instance_time = time.time()
         self._disk_devices = disk_devices
@@ -99,7 +103,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             self._close_handle(device_pathname)
 
 
-    def _close_handle(self, device_pathname: str) -> Optional[int]:
+    def _close_handle(self, device_pathname: str):
         with self._mutex:
             try:
                 handle = self._handles[device_pathname]
@@ -511,10 +515,10 @@ def sync(sync_disks_ts: int, sync_process):
     return sync_disks_ts, sync_process
 
 
-def get_partitions2() -> OrderedDict:
+def get_partitions2() -> 'OrderedDict[str, dict]':
     lsblk_buf = StringIO()
     pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)" RO="(.*)"'
-    ret = OrderedDict()
+    ret: OrderedDict[str, dict] = OrderedDict()
 
     # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype,ro -n -b
     sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype,ro', '-n', '-b', _out=lsblk_buf)
