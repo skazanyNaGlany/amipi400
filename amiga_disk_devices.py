@@ -588,6 +588,8 @@ def cleanup_disk_devices(partitions: dict, disk_devices: dict):
         if ipart_dev not in partitions:
             del disk_devices[ipart_dev]
 
+            print_log(ipart_dev, 'ejected')
+
 
 def add_disk_devices(partitions: dict, disk_devices: dict):
     for ipart_dev, ipart_data in partitions.items():
