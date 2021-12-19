@@ -24,6 +24,7 @@ try:
     from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
     from errno import ENOENT
     from stat import S_IFDIR, S_IFREG
+    from pynput.keyboard import Key, Listener
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -49,6 +50,8 @@ MAIN_LOOP_MAX_COUNTER = 0
 
 
 fs_instance = None
+key_ctrl_pressed = False
+key_shift_pressed = False
 
 
 class AmigaDiskDevicesFS(LoggingMixIn, Operations):
@@ -542,6 +545,7 @@ def get_partitions2() -> 'OrderedDict[str, dict]':
             'label': found[4],
             'config': None,
             'device': full_path,
+            'device_basename': os.path.basename(full_path),
             'is_floppy_drive': False,
             'size': int(found[1]) if found[1] else 0,
             'type': found[2],
@@ -704,6 +708,107 @@ def set_device_read_a_head_sectors(device: str, sectors: int):
     ))
 
 
+def find_new_devices(partitions: dict, old_partitions: dict) -> List[str]:
+    new_devices = []
+
+    for ipart_dev, ipart_data in partitions.items():
+        if not old_partitions or ipart_dev not in old_partitions:
+            new_devices.append(ipart_dev)
+
+    return new_devices
+
+
+def is_ctrl_shift_pressed() -> bool:
+    return key_ctrl_pressed and key_shift_pressed
+
+
+def clear_pressed_keys():
+    global key_ctrl_pressed
+    global key_shift_pressed
+
+    key_ctrl_pressed = False
+    key_shift_pressed = False
+
+
+def format_single_floppy(device: str):
+    try:
+        with open(device, 'wb') as f:
+            f.write(bytes(1024))
+            f.flush()
+    except OSError as ex:
+        print_log(str(ex))
+
+        return False
+
+    return True
+
+
+def rescan_device(device_basename: str):
+    os.system('echo 1 > /sys/class/block/{device_basename}/device/rescan'.format(
+        device_basename=device_basename
+    ))
+
+
+def format_devices(partitions: dict, old_partitions: dict):
+    if not is_ctrl_shift_pressed():
+        return
+
+    clear_pressed_keys()
+
+    new_devices = find_new_devices(partitions, old_partitions)
+
+    if not new_devices:
+        return
+
+    for ipart_dev in new_devices:
+        ipart_data = partitions[ipart_dev]
+
+        if ipart_data['type'] != 'disk':
+            continue
+
+        print_log(ipart_dev, 'new')
+
+        if ipart_data['size'] == FLOPPY_DEVICE_SIZE:
+            print_log(ipart_dev, 'formatting floppy in drive')
+
+            if format_single_floppy(ipart_dev):
+                print_log(ipart_dev, 'scanning')
+
+                rescan_device(ipart_data['device_basename'])
+
+                del partitions[ipart_dev]
+
+
+def on_key_press(key):
+    global key_ctrl_pressed
+    global key_shift_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = True
+
+    if key == Key.shift:
+        key_shift_pressed = True
+
+
+def on_key_release(key):
+    global key_ctrl_pressed
+    global key_shift_pressed
+
+    if key == Key.ctrl:
+        key_ctrl_pressed = False
+
+    if key == Key.shift:
+        key_shift_pressed = False
+
+
+def init_keyboard_listener():
+    keyboard_listener = Listener(
+        on_press=on_key_press,
+        on_release=on_key_release
+    )
+    keyboard_listener.start()
+
+
 def main():
     partitions = None
     old_partitions = None
@@ -721,6 +826,7 @@ def main():
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
     init_fuse(disk_devices)
+    init_keyboard_listener()
 
     try:
         while True:
@@ -730,6 +836,7 @@ def main():
                 if partitions != old_partitions:
                     # something changed
                     print_partitions(partitions)
+                    format_devices(partitions, old_partitions)
                     update_disk_devices(partitions, disk_devices)
                     affect_fs_disk_devices(disk_devices)
 
