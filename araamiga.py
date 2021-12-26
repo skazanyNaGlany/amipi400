@@ -391,7 +391,7 @@ def keep_monitor_off_to_emulator(additional_seconds: int):
 
 
 def update_monitor_state():
-    # TODO limit execution once every second
+    # TODO execute once a second
     global monitor_off_timestamp
     global monitor_state
     global monitor_off_seconds
@@ -1485,7 +1485,7 @@ def block_till_tmp_ini_exists():
 
 
 def execute_commands():
-    # TODO execute once a second
+    # TODO limit execution once every second
     global commands
 
     str_commands = ''
