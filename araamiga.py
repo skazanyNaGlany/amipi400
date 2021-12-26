@@ -542,14 +542,24 @@ def find_cd_first_mountpoint(partitions: dict, cd_index: int) -> dict:
 
 def process_floppy_replace_action(partitions: dict, action: str):
     idf_index = int(action[2])
+    target_idf_index = idf_index
+
+    # remove df<number> from start
+    action = action[3:]
 
     if idf_index + 1 > MAX_FLOPPIES:
         return
 
-    detached_floppy_data = detach_floppy(idf_index)
-    floppy_pattern_name = action[3:].strip()
+    if endswith_dfn(action):
+        target_idf_index = int(action[-1])
 
-    update_floppy_drive_sound(idf_index)
+        # remove df<number> from end
+        action = action[:-3]
+
+    detached_floppy_data = detach_floppy(target_idf_index)
+    floppy_pattern_name = action.strip()
+
+    update_floppy_drive_sound(target_idf_index)
 
     if not floppy_pattern_name:
         return
@@ -573,8 +583,13 @@ def process_floppy_replace_action(partitions: dict, action: str):
 
     put_local_commit_command(1)
 
-    if attach_mountpoint_floppy(medium['device'], medium, pathname):
-        update_floppy_drive_sound(idf_index)
+    if attach_mountpoint_floppy(
+        medium['device'],
+        medium,
+        pathname,
+        target_idf_index=target_idf_index
+    ):
+        update_floppy_drive_sound(target_idf_index)
 
 
 def process_cd_replace_action(partitions: dict, action: str):
@@ -782,6 +797,14 @@ def process_cd_replace_by_index_action(action: str):
 def startswith_dfn(s: str) -> bool:
     for idf_index in range(MAX_FLOPPIES):
         if s.startswith('df' + str(idf_index)):
+            return True
+
+    return False
+
+
+def endswith_dfn(s: str) -> bool:
+    for idf_index in range(MAX_FLOPPIES):
+        if s.endswith('df' + str(idf_index)):
             return True
 
     return False
@@ -2282,7 +2305,8 @@ def attach_mountpoint_floppy(
     ipart_dev,
     ipart_data,
     force_file_pathname = None,
-    using_amiga_disk_devices = False
+    using_amiga_disk_devices = False,
+    target_idf_index = None
 ):
     global floppies
 
@@ -2300,7 +2324,10 @@ def attach_mountpoint_floppy(
     if not iadf:
         return False
 
-    index = get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
+    if target_idf_index is None:
+        index = get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
+    else:
+        index = target_idf_index
 
     if index >= MAX_FLOPPIES:
         return False
