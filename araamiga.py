@@ -779,20 +779,34 @@ def process_cd_replace_by_index_action(action: str):
         attach_mountpoint_cd_image(device, medium, to_insert_pathname)
 
 
+def startswith_dfn(s: str) -> bool:
+    for idf_index in range(MAX_FLOPPIES):
+        if s.startswith('df' + str(idf_index)):
+            return True
+
+    return False
+
+
+def startswith_cdn(s: str) -> bool:
+    for icd_index in range(MAX_CD_DRIVES):
+        if s.startswith('cd' + str(icd_index)):
+            return True
+
+    return False
+
+
 def process_tab_combo_action(partitions: dict, action: str):
     len_action = len(action)
 
-    # TODO replace df0, df1, ... with MAX_FLOPPIES
-    # TODO replace cd0, ... with MAX_CD_DRIVES
-    if action.startswith('df0') or action.startswith('df1') or action.startswith('df2') or action.startswith('df4'):
-        if len_action >= 4 and len_action <= 5:
+    if startswith_dfn(action):
+        if len_action == 4:
             process_floppy_replace_by_index_action(action)
 
             return
 
         process_floppy_replace_action(partitions, action)
-    elif action.startswith('cd0'):
-        if len_action >= 4 and len_action <= 5:
+    elif startswith_cdn(action):
+        if len_action == 4:
             process_cd_replace_by_index_action(action)
 
             return
