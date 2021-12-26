@@ -23,3 +23,5 @@ Traceback (most recent call last):
     with os.scandir(AMIGA_DISK_DEVICES_MOUNTPOINT) as it:
 OSError: [Errno 22] Invalid argument: '/tmp/amiga_disk_devices'
 
+
+2. long press hard reset not working properly
