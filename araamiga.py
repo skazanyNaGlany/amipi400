@@ -2302,6 +2302,17 @@ def get_medium_file(
         return medium_files[0]
 
 
+def is_adf_attached(pathname: str) -> bool:
+    for idf_index, ifloppy_data in enumerate(floppies):
+        if not ifloppy_data:
+            continue
+
+        if ifloppy_data['pathname'] == pathname:
+            return True
+
+    return False
+
+
 def attach_mountpoint_floppy(
     ipart_dev,
     ipart_data,
@@ -2331,6 +2342,9 @@ def attach_mountpoint_floppy(
         index = target_idf_index
 
     if index >= MAX_FLOPPIES:
+        return False
+
+    if is_adf_attached(iadf):
         return False
 
     if not floppies[index] or floppies[index]['pathname'] != iadf:
