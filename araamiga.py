@@ -708,14 +708,24 @@ def process_floppy_replace_by_index_action(action: str):
     global floppies
 
     idf_index = int(action[2])
+    target_idf_index = idf_index
+
+    # remove df<number> from start
+    action = action[3:]
 
     if idf_index + 1 > MAX_FLOPPIES:
         return
 
+    if endswith_dfn(action):
+        target_idf_index = int(action[-1])
+
+        # remove df<number> from end
+        action = action[:-3]
+
     if not floppies[idf_index]:
         return
 
-    action_data = action[3:].strip()
+    action_data = action.strip()
 
     if not action_data:
         return
@@ -737,18 +747,26 @@ def process_floppy_replace_by_index_action(action: str):
             break
 
     if to_insert_pathname:
-        if floppies[idf_index]['pathname'] == to_insert_pathname:
+        if floppies[target_idf_index] and floppies[target_idf_index]['pathname'] == to_insert_pathname:
             return
 
-        detached_floppy_data = detach_floppy(idf_index, True)
+        detached_floppy_data = detach_floppy(target_idf_index, True)
 
-        update_floppy_drive_sound(idf_index)
+        if not detached_floppy_data:
+            detached_floppy_data = floppies[idf_index]
+
+        update_floppy_drive_sound(target_idf_index)
 
         device = detached_floppy_data['device']
         medium = detached_floppy_data['medium']
 
-        if attach_mountpoint_floppy(device, medium, to_insert_pathname):
-            update_floppy_drive_sound(idf_index)
+        if attach_mountpoint_floppy(
+            device,
+            medium,
+            to_insert_pathname,
+            target_idf_index=target_idf_index
+        ):
+            update_floppy_drive_sound(target_idf_index)
 
 
 def process_cd_replace_by_index_action(action: str):
@@ -823,7 +841,8 @@ def process_tab_combo_action(partitions: dict, action: str):
     len_action = len(action)
 
     if startswith_dfn(action):
-        if len_action == 4:
+        if len_action == 4 or \
+        (len_action == 7 and endswith_dfn(action)):
             process_floppy_replace_by_index_action(action)
 
             return
