@@ -144,6 +144,7 @@ sound_output_state = 'exact'
 last_system_sound_mute_state = 'unmute'
 failing_devices_ignore = []
 keyboard_listener = None
+is_emulator_running = None
 
 
 def mount_tmpfs():
@@ -406,7 +407,7 @@ def update_monitor_state():
             turn_on_monitor()
             monitor_state = MONITOR_STATE_ON
     elif monitor_state == MONITOR_STATE_KEEP_OFF_TO_EMULATOR:
-        if not is_emulator_running():
+        if not is_emulator_running:
             return
 
         keep_monitor_off(monitor_off_seconds)
@@ -923,8 +924,11 @@ def audio_lag_fix():
     global audio_lag_fix_step
     global audio_lag_fix_ts
 
-    if not ENABLE_AUDIO_LAG_FIX or audio_lag_fix_step == 2:
-        # audio lag fix not enabled or already applied
+    if not ENABLE_AUDIO_LAG_FIX or \
+        audio_lag_fix_step == 2 or \
+        not is_emulator_running:
+        # audio lag fix not enabled, already applied
+        # or emulator is not running
         return
 
     current_ts = int(time.time())
@@ -1523,7 +1527,8 @@ def write_tmp_ini(str_commands: str):
 
 
 def block_till_tmp_ini_exists():
-    while os.path.exists(emulator_tmp_ini_pathname) and is_emulator_running():
+    while os.path.exists(emulator_tmp_ini_pathname) and \
+        check_emulator_running():
         time.sleep(0)
 
 
@@ -2538,7 +2543,7 @@ def get_medium_default_file(medium_data):
     ))
 
 
-def is_emulator_running():
+def check_emulator_running():
     if not AUTORUN_EMULATOR:
         return None
 
@@ -3171,6 +3176,7 @@ while True:
     other_attached = []
 
     partitions = get_partitions2()
+    is_emulator_running = check_emulator_running()
 
     if partitions != old_partitions:
         failing_devices_ignore = []
@@ -3221,7 +3227,7 @@ while True:
         print_commands()
         execute_commands()
 
-    if is_emulator_running() == False:
+    if is_emulator_running == False:
         run_emulator()
         reset_audio_lag_fix()
 
