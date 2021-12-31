@@ -42,7 +42,7 @@ FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
 ENABLE_FLOPPY_DRIVE_SOUND = 'auto'
 ENABLE_HARD_DRIVES = True
 ENABLE_LOGGER = False
-ENABLE_TURN_OFF_MONITOR = False
+ENABLE_TURN_OFF_MONITOR = True
 ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL = True
 ENABLE_AUDIO_LAG_FIX = True
 ENABLE_FORCE_FSCK = 'auto'
@@ -145,6 +145,8 @@ last_system_sound_mute_state = 'unmute'
 failing_devices_ignore = []
 keyboard_listener = None
 is_emulator_running = None
+soft_resetting = False
+hard_resetting = False
 
 
 def mount_tmpfs():
@@ -413,29 +415,59 @@ def update_monitor_state():
         keep_monitor_off(monitor_off_seconds)
 
 
+def clear_reset_marks():
+    global soft_resetting
+    global hard_resetting
+
+    soft_resetting = False
+    hard_resetting = False
+
+
+def soft_reset_emulator():
+    global soft_resetting
+
+    if soft_resetting:
+        return
+
+    clear_system_cache()
+    put_command('uae_reset 1,1')
+
+    soft_resetting = True
+
+
+def hard_reset_emulator():
+    global hard_resetting
+
+    if hard_resetting or not AUTORUN_EMULATOR:
+        return
+
+    turn_off_monitor()
+    kill_emulator()
+    keep_monitor_off_to_emulator(5)
+
+    hard_resetting = True
+
+
 def ctrl_alt_alt_gr_keyboard_action():
-    global key_ctrl_pressed
-    global key_alt_pressed
-    global key_alt_gr_pressed
     global ctrl_alt_alt_gr_press_ts
 
+    current_time = time.time()
+
     if key_ctrl_pressed and key_alt_pressed and key_alt_gr_pressed:
-        key_ctrl_pressed = False
-        key_alt_pressed = False
-        key_alt_gr_pressed = False
-
-        ctrl_alt_alt_gr_press_ts = int(time.time())
-
-        clear_system_cache()
-        put_command('uae_reset 1,1')
+        if not ctrl_alt_alt_gr_press_ts:
+            ctrl_alt_alt_gr_press_ts = current_time
     elif not key_ctrl_pressed and not key_alt_pressed and not key_alt_gr_pressed:
         ctrl_alt_alt_gr_press_ts = 0
 
-    if ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL:
-        if ctrl_alt_alt_gr_press_ts and int(time.time()) - ctrl_alt_alt_gr_press_ts >= 3:
-            ctrl_alt_alt_gr_press_ts = 0
+        clear_reset_marks()
 
-            kill_emulator()
+    if ctrl_alt_alt_gr_press_ts:
+        if current_time - ctrl_alt_alt_gr_press_ts >= 0.100:
+            soft_reset_emulator()
+
+        if ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL:
+            if current_time - ctrl_alt_alt_gr_press_ts >= 8:
+                hard_reset_emulator()
 
 
 def string_unify2(str_to_unify: str, exclude = None) -> str:
@@ -1224,10 +1256,7 @@ def process_changed_drives():
 
     drives_changed = False
 
-    if AUTORUN_EMULATOR:
-        turn_off_monitor()
-        kill_emulator()
-        keep_monitor_off_to_emulator(5)
+    hard_reset_emulator()
 
 
 # following two functions are useful for debugging
