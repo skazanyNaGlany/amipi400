@@ -876,19 +876,39 @@ def process_tab_combo_action(partitions: dict, action: str):
     if startswith_dfn(action):
         if len_action == 4 or \
         (len_action == 7 and endswith_dfn(action)):
+            # df<source index><disk no>
+            # example: df01
+            #
+            # or
+            #
+            # df<source index><disk no>df<target index>
+            # example: df01df1
             process_floppy_replace_by_index_action(action)
 
             return
 
+        # df<source index><ADF part file name>
+        #
+        # or
+        #
+        # df<source index><ADF part file name>df<target index>
         process_floppy_replace_action(partitions, action)
     elif startswith_cdn(action):
         if len_action == 4:
+            # cd<source index><disk no>
+            # example: cd01
             process_cd_replace_by_index_action(action)
 
             return
 
+        # cd<source index><ISO part file name>
         process_cd_replace_action(partitions, action)
     elif action.startswith('wifi'):
+        # wifi
+        #
+        # or
+        #
+        # wifi,<country code in ISO/IEC 3166-1 alpha2>,<ssid>,<password>
         process_wifi_action(action)
 
 
