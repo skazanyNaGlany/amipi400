@@ -802,6 +802,22 @@ def process_floppy_replace_by_index_action(action: str):
             update_floppy_drive_sound(target_idf_index)
 
 
+def process_floppy_detach_all_action():
+    detached = False
+
+    for idf_index, ifloppy_data in enumerate(floppies):
+        if not ifloppy_data:
+            continue
+
+        if detach_floppy(idf_index):
+            update_floppy_drive_sound(idf_index)
+
+        detached = True
+
+    if detached:
+        put_local_commit_command(1)
+
+
 def process_cd_replace_by_index_action(action: str):
     global cd_drives
 
@@ -893,6 +909,9 @@ def process_tab_combo_action(partitions: dict, action: str):
         #
         # df<source index><ADF part file name>df<target index>
         process_floppy_replace_action(partitions, action)
+    elif action == 'dfn':
+        # dfn
+        process_floppy_detach_all_action()
     elif startswith_cdn(action):
         if len_action == 4:
             # cd<source index><disk no>
