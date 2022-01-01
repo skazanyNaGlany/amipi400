@@ -584,7 +584,7 @@ def process_floppy_replace_action(partitions: dict, action: str):
     if idf_index + 1 > MAX_FLOPPIES:
         return
 
-    if endswith_dfn(action):
+    if endswith_dfX(action):
         target_idf_index = int(action[-1])
 
         # remove df<number> from end
@@ -749,7 +749,7 @@ def process_floppy_replace_by_index_action(action: str):
     if idf_index + 1 > MAX_FLOPPIES:
         return
 
-    if endswith_dfn(action):
+    if endswith_dfX(action):
         target_idf_index = int(action[-1])
 
         # remove df<number> from end
@@ -862,7 +862,7 @@ def process_cd_replace_by_index_action(action: str):
         attach_mountpoint_cd_image(device, medium, to_insert_pathname)
 
 
-def startswith_dfn(s: str) -> bool:
+def startswith_dfX(s: str) -> bool:
     for idf_index in range(MAX_FLOPPIES):
         if s.startswith('df' + str(idf_index)):
             return True
@@ -870,7 +870,7 @@ def startswith_dfn(s: str) -> bool:
     return False
 
 
-def endswith_dfn(s: str) -> bool:
+def endswith_dfX(s: str) -> bool:
     for idf_index in range(MAX_FLOPPIES):
         if s.endswith('df' + str(idf_index)):
             return True
@@ -878,7 +878,7 @@ def endswith_dfn(s: str) -> bool:
     return False
 
 
-def startswith_cdn(s: str) -> bool:
+def startswith_cdX(s: str) -> bool:
     for icd_index in range(MAX_CD_DRIVES):
         if s.startswith('cd' + str(icd_index)):
             return True
@@ -889,9 +889,9 @@ def startswith_cdn(s: str) -> bool:
 def process_tab_combo_action(partitions: dict, action: str):
     len_action = len(action)
 
-    if startswith_dfn(action):
+    if startswith_dfX(action):
         if len_action == 4 or \
-        (len_action == 7 and endswith_dfn(action)):
+        (len_action == 7 and endswith_dfX(action)):
             # df<source index><disk no>
             # example: df01
             #
@@ -912,7 +912,7 @@ def process_tab_combo_action(partitions: dict, action: str):
     elif action == 'dfn':
         # dfn
         process_floppy_detach_all_action()
-    elif startswith_cdn(action):
+    elif startswith_cdX(action):
         if len_action == 4:
             # cd<source index><disk no>
             # example: cd01
