@@ -859,19 +859,53 @@ def process_floppy_replace_by_index_action(action: str):
             update_floppy_drive_sound(target_idf_index)
 
 
-def process_floppy_detach_all_action():
-    detached = False
+def process_floppy_detach_all_action() -> List[dict]:
+    detached = []
 
     for idf_index, ifloppy_data in enumerate(floppies):
         if not ifloppy_data:
             continue
 
-        if detach_floppy(idf_index):
+        detached_floppy_data = detach_floppy(idf_index)
+
+        if detached_floppy_data:
             update_floppy_drive_sound(idf_index)
 
-        detached = True
+            detached.append(detached_floppy_data)
 
     if detached:
+        put_local_commit_command(1)
+
+    return detached
+
+
+def process_floppy_reverse_all_action():
+    detached = process_floppy_detach_all_action()
+
+    if not detached:
+        return
+
+    detached.reverse()
+
+    target_idf_index = 0
+    attached = False
+
+    for detached_floppy_data in detached:
+        device = detached_floppy_data['device']
+        medium = detached_floppy_data['medium']
+
+        if attach_mountpoint_floppy(
+            device,
+            medium,
+            detached_floppy_data['pathname'],
+            target_idf_index=target_idf_index
+        ):
+            update_floppy_drive_sound(target_idf_index)
+
+            target_idf_index += 1
+            attached = True
+
+    if attached:
         put_local_commit_command(1)
 
 
@@ -974,6 +1008,9 @@ def process_tab_combo_action(partitions: dict, action: str):
     elif action == 'dfn':
         # dfn
         process_floppy_detach_all_action()
+    elif action == 'dfndfn':
+        # dfndfn
+        process_floppy_reverse_all_action()
     elif startswith_cdX(action):
         if len_action == 4:
             # cd<source index><disk no>
