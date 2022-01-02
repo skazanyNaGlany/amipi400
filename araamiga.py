@@ -626,6 +626,63 @@ def process_floppy_replace_action(partitions: dict, action: str):
         update_floppy_drive_sound(target_idf_index)
 
 
+def process_floppy_attach_many_action(partitions: dict, action: str):
+    idf_index = int(action[2])
+
+    # remove df<number> from start
+    action = action[3:]
+
+    if idf_index + 1 > MAX_FLOPPIES:
+        return
+
+    # remove dfn from end
+    action = action[:-3]
+
+    floppy_pattern_name = action.strip()
+
+    if not floppy_pattern_name:
+        return
+
+    medium = find_floppy_first_mountpoint(partitions, idf_index)
+
+    if not medium:
+        # should not get here
+        return
+
+    pathname = find_similar_file_adf(
+        medium['mountpoint'],
+        floppy_pattern_name
+    )
+
+    if not pathname:
+        return
+
+    similar_roms = find_similar_roms(pathname)
+    target_idf_index = 0
+    attached = False
+
+    for value in similar_roms:
+        if target_idf_index + 1 > MAX_FLOPPIES:
+            break
+
+        if floppies[target_idf_index] and floppies[target_idf_index]['pathname'] == value:
+            return
+
+        if attach_mountpoint_floppy(
+            medium['device'],
+            medium,
+            value,
+            target_idf_index=target_idf_index
+        ):
+            update_floppy_drive_sound(target_idf_index)
+
+            target_idf_index += 1
+            attached = True
+
+    if attached:
+        put_local_commit_command(1)
+
+
 def process_cd_replace_action(partitions: dict, action: str):
     icd_index = int(action[2])
 
@@ -900,6 +957,11 @@ def process_tab_combo_action(partitions: dict, action: str):
             # df<source index><disk no>df<target index>
             # example: df01df1
             process_floppy_replace_by_index_action(action)
+
+            return
+        elif action.endswith('dfn'):
+            # df<source index><ADF part file name>dfn
+            process_floppy_attach_many_action(partitions, action)
 
             return
 
