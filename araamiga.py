@@ -56,6 +56,7 @@ ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
 ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SET_CACHE_PRESSURE = False
+ENABLE_INTERNAL_DRIVE = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -108,6 +109,8 @@ WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
 ALT_GR_KEYCODE = 65027
 ALT_GR_UK_KEYCODE = 65406
 DEFAULT_FLOPPY_TYPE=0       # 3,5'' DD
+INTERNAL_DRIVE_BOOT_BRIORITY = -128     # -128 = not bootable
+INTERNAL_DRIVE_LABEL = 'AmiPi400_Internal'
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -121,6 +124,7 @@ old_amiga_disk_devices = None
 key_ctrl_pressed = False
 key_alt_pressed = False
 key_alt_gr_pressed = False
+key_shift_r_pressed = False
 ctrl_alt_alt_gr_press_ts = 0
 tab_combo = []
 tab_pressed = False
@@ -2745,21 +2749,39 @@ def format_uaehf_dir_string(drive_index: int, permissions: str, label: str, path
     )
 
 
-def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
+def get_dir_drive_config_command_line(
+    drive_index: int,
+    drive_data: dict,
+    force_label: str = None,
+    force_pathname: str = None,
+    force_boot_priority: int = None
+):
     config = []
 
-    label = get_medium_partition_label(drive_data)
-    boot_priority = get_label_hard_disk_boot_priority(drive_data['label'])
+    if force_label is not None:
+        label = force_label
+    else:
+        label = get_medium_partition_label(drive_data)
+
+    if force_boot_priority is not None:
+        boot_priority = force_boot_priority
+    else:
+        boot_priority = get_label_hard_disk_boot_priority(drive_data['label'])
 
     if not label:
         label = drive_data['label']
+
+    if force_pathname is not None:
+        pathname = force_pathname
+    else:
+        pathname = drive_data['pathname']
 
     config.append(
         format_filesystem2_string(
             'rw',
             drive_index,
             label,
-            drive_data['pathname'],
+            pathname,
             boot_priority
         )
     )
@@ -2768,7 +2790,7 @@ def get_dir_drive_config_command_line(drive_index: int, drive_data: dict):
             drive_index,
             'rw',
             label,
-            drive_data['pathname'],
+            pathname,
             boot_priority
         )
     )
@@ -2915,6 +2937,25 @@ def get_media_command_line_config():
                     )
 
                     drive_index += 1
+
+    # internal drive
+    if ENABLE_INTERNAL_DRIVE and \
+        key_shift_r_pressed and \
+        drive_index < MAX_DRIVES:
+        drive_config = get_dir_drive_config_command_line(
+            drive_index,
+            None,
+            INTERNAL_DRIVE_LABEL,
+            INTERNAL_MOUNTPOINTS_PATHNAME,
+            INTERNAL_DRIVE_BOOT_BRIORITY
+        )
+
+        str_drives += ' -s {config0} -s {config1} '.format(
+            config0=drive_config[0],
+            config1=drive_config[1]
+        )
+
+        drive_index += 1
 
     # cd drives
     str_cd_drives = get_cd_drives_command_line_config()
@@ -3269,6 +3310,7 @@ def on_key_press(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_alt_gr_pressed
+    global key_shift_r_pressed
     global tab_pressed
     global ctrl_alt_alt_gr_press_ts
     global tab_combo
@@ -3281,6 +3323,9 @@ def on_key_press(key):
 
     if is_alt_gr_key(key):
         key_alt_gr_pressed = True
+
+    if key == Key.shift_r:
+        key_shift_r_pressed = True
 
     if key == Key.tab:
         tab_pressed = True
@@ -3298,6 +3343,7 @@ def on_key_release(key):
     global key_ctrl_pressed
     global key_alt_pressed
     global key_alt_gr_pressed
+    global key_shift_r_pressed
     global tab_pressed
     global ctrl_alt_alt_gr_press_ts
 
@@ -3309,6 +3355,9 @@ def on_key_release(key):
 
     if is_alt_gr_key(key):
         key_alt_gr_pressed = False
+
+    if key == Key.shift_r:
+        key_shift_r_pressed = False
 
     if key == Key.tab:
         tab_pressed = False
