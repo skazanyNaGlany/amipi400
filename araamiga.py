@@ -2663,7 +2663,11 @@ def get_mountpoint_config(mountpoint: str):
         return None
 
     config = ConfigParser()
-    config.read(config_pathname)
+
+    try:
+        config.read(config_pathname)
+    except configparser.ParsingError:
+        return None
 
     return config
 
