@@ -57,6 +57,7 @@ ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
 ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SET_CACHE_PRESSURE = False
 ENABLE_INTERNAL_DRIVE = True
+ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = False  # ~20 secs faster (can break compatibility in some games)
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -151,6 +152,7 @@ keyboard_listener = None
 is_emulator_running = None
 soft_resetting = False
 hard_resetting = False
+current_floppy_speed = 100
 
 
 def mount_tmpfs():
@@ -1454,7 +1456,7 @@ def enable_sound():
     set_sound_output_state('exact')
 
 
-def is_caching_physical_floppy2() -> bool:
+def is_caching_physical_floppy2(additional_seconds: int) -> bool:
     current_time = time.time()
 
     for drive_index, floppy_data in enumerate(floppies):
@@ -1464,7 +1466,7 @@ def is_caching_physical_floppy2() -> bool:
         if not floppy_data['diskstats_change_ts']:
             continue
 
-        if current_time - floppy_data['diskstats_change_ts'] <= 4:
+        if current_time - floppy_data['diskstats_change_ts'] <= additional_seconds:
             return True
 
     return False
@@ -1620,14 +1622,37 @@ def is_writing_physical_floppy() -> bool:
     return False
 
 
-def affect_paula_volume2():
-    refresh_floppies_times()
-    refresh_floppies_diskstats()
+def set_floppy_speed(speed: int):
+    global current_floppy_speed
 
+    if current_floppy_speed == speed:
+        return
+
+    put_command('cfgfile_parse_line_type_all floppy_speed=' + str(speed))
+    put_command('config_changed 1')
+
+    current_floppy_speed = speed
+
+
+def affect_floppy_speed():
+    if not ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK:
+        return
+
+    is_caching = is_caching_physical_floppy2(1)
+
+    if is_caching:
+        # turbo
+        set_floppy_speed(0)
+    else:
+        # 100% compatible
+        set_floppy_speed(100)
+
+
+def affect_paula_volume2():
     is_accessing = is_accessing_physical_floppy3()
 
     if is_accessing:
-        is_caching = is_caching_physical_floppy2()
+        is_caching = is_caching_physical_floppy2(4)
 
         if is_caching:
             mute_system_sound()
@@ -3441,6 +3466,10 @@ while True:
 
     process_changed_drives()
 
+    refresh_floppies_times()
+    refresh_floppies_diskstats()
+
+    affect_floppy_speed()
     affect_paula_volume2()
 
     if commands:
