@@ -24,7 +24,7 @@ try:
     from typing import Optional, List
     from io import StringIO
     from pynput.keyboard import Key, Listener
-    from configparser import ConfigParser
+    from configparser import ConfigParser, ParsingError
     from array import array
 except ImportError as xie:
     print(str(xie))
@@ -2695,7 +2695,7 @@ def get_mountpoint_config(mountpoint: str):
 
     try:
         config.read(config_pathname)
-    except configparser.ParsingError:
+    except ParsingError:
         return None
 
     return config
