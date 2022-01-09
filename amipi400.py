@@ -2000,7 +2000,7 @@ def is_floppy_label(label: str) -> bool:
     if len(label) != 7:
         return False
 
-    if not label.startswith('ARA_DF'):
+    if not label.startswith('AP4_DF'):
         return False
 
     if not label[6].isdigit():
@@ -2013,7 +2013,7 @@ def is_hard_drive_simple_label(label: str) -> bool:
     if len(label) != 7:
         return False
 
-    if not label.startswith('ARA_DH'):
+    if not label.startswith('AP4_DH'):
         return False
 
     if not label[6].isdigit():
@@ -2026,7 +2026,7 @@ def is_hard_drive_extended_label(label: str) -> bool:
     if len(label) != 9:
         return False
 
-    if not label.startswith('ARA_DH'):
+    if not label.startswith('AP4_DH'):
         return False
 
     if not label[6].isdigit():
@@ -2054,7 +2054,7 @@ def is_hard_file_simple_label(label: str) -> bool:
     if len(label) != 8:
         return False
 
-    if not label.startswith('ARA_HDF'):
+    if not label.startswith('AP4_HDF'):
         return False
 
     if not label[7].isdigit():
@@ -2067,7 +2067,7 @@ def is_hard_file_extended_label(label: str) -> bool:
     if len(label) != 10:
         return False
 
-    if not label.startswith('ARA_HDF'):
+    if not label.startswith('AP4_HDF'):
         return False
 
     if not label[7].isdigit():
@@ -2095,7 +2095,7 @@ def is_cd_label(label: str) -> bool:
     if len(label) != 7:
         return False
 
-    if not label.startswith('ARA_CD'):
+    if not label.startswith('AP4_CD'):
         return False
 
     if not label[6].isdigit():
