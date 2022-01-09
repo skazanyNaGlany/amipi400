@@ -85,11 +85,12 @@ KICKSTART_EXTENDED_PATHNAMES = [
 # stock Amiga 1200
 # EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
 # stock Amiga 1200 + 8 MB FAST RAM
-EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
+# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
 # fastest Amiga 1200
 # EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_compatible=false -s cpu_24bit_addressing=false -s cachesize=16384 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
 # stock Amiga CD32
 # EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives} {additional_config_options}'
 CONFIG_INI_NAME = '.araamiga.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
@@ -112,6 +113,128 @@ ALT_GR_UK_KEYCODE = 65406
 DEFAULT_FLOPPY_TYPE=0       # 3,5'' DD
 INTERNAL_DRIVE_BOOT_BRIORITY = -128     # -128 = not bootable
 INTERNAL_DRIVE_LABEL = 'AmiPi400_Internal'
+KICKSTART_ROMS2MODEL_MAP = [
+    # https://fs-uae.net/docs/kickstarts
+    {
+        'amiga_model_id': 'A500',
+        'amiga_model_full_name': 'Amiga 500',
+        'kickstart_version': '1.3',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v1.3 *(A500-A1000-A2000-CDTV)*.rom',
+            'Kickstart1.3*.rom',
+            'amiga-os-130*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A500P',
+        'amiga_model_full_name': 'Amiga 500+',
+        'kickstart_version': '2.04',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v2.04 *(A500*+)*.rom',
+            'Kickstart v2.04 *(A500*PLUS)*.rom',
+            'Kickstart2.04*.rom',
+            'amiga-os-204*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A600',
+        'amiga_model_full_name': 'Amiga 600',
+        'kickstart_version': '2.05',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v2.05 *(A600)*.rom',
+            'Kickstart v2.05 *(A600*HD)*.rom',
+            'Kickstart2.05*.rom',
+            'amiga-os-205*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A1200',
+        'amiga_model_full_name': 'Amiga 1200',
+        'kickstart_version': '3.1',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v3.1 *(A1200)*.rom',
+            'Kickstart3.1*.rom',
+            'amiga-os-310-a1200*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A3000',
+        'amiga_model_full_name': 'Amiga 3000',
+        'kickstart_version': '3.1',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v3.1 *(A3000)*.rom',
+            # 'Kickstart3.1*.rom',
+            'amiga-os-310-a3000*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A4000',
+        'amiga_model_full_name': 'Amiga 4000',
+        'kickstart_version': '3.1',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v3.1 *(A4000)*.rom',
+            # 'Kickstart3.1*.rom',
+            'amiga-os-310*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'A1000',
+        'amiga_model_full_name': 'Amiga 1000',
+        'kickstart_version': '1.2',
+        'need_extended_rom': False,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v1.2 *(A500-A1000-A2000)*.rom',
+            'Kickstart1.2*.rom',
+            'amiga-os-120*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'CD32',
+        'amiga_model_full_name': 'Amiga CD32',
+        'kickstart_version': '3.1',
+        'need_extended_rom': True,
+        'additional_config_options': [
+            # HACK we need to add finegrain_cpu_speed=1024
+            # HACK in order to emulate CD32
+            # HACK maybe it is a bug in the emulator?
+            'finegrain_cpu_speed=1024'
+        ],
+        'file_names': [
+            'Kickstart v3.1 *(CD32)*.rom',
+            'amiga-os-310-cd32*.rom'
+        ]
+    },
+    {
+        'amiga_model_id': 'CDTV',
+        'amiga_model_full_name': 'Amiga CDTV',
+        'kickstart_version': '1.3',
+        'need_extended_rom': True,
+        'additional_config_options': [],
+        'file_names': [
+            'Kickstart v1.3 *(CDTV)*.rom',
+        ]
+    }
+]
+AMIBERRY_AMIGA_MODEL_SUPPORT = [
+    'A500',
+    'A500P',
+    'A1200',
+    'A4000',
+    'CD32'
+]
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -153,6 +276,7 @@ is_emulator_running = None
 soft_resetting = False
 hard_resetting = False
 current_floppy_speed = 100
+current_amiga_kickstart2model = None
 
 
 def mount_tmpfs():
@@ -212,8 +336,6 @@ def print_app_version():
 def check_pre_requirements():
     check_system_binaries()
     check_emulator()
-    check_kickstart()
-    check_extended_kickstart()
 
 
 def configure_system():
@@ -276,33 +398,61 @@ def check_emulator():
     print_log('Emulator executable: ' + emulator_exe_pathname)
 
 
-def check_kickstart():
+def setup_amiga_model():
     global kickstart_pathname
+    global current_amiga_kickstart2model
 
-    print_log('Checking kickstart')
+    print_log('Checking kickstart and setting Amiga model')
 
     for ipathname in KICKSTART_PATHNAMES:
-        paths = glob.glob(ipathname)
+        pathnames = glob.glob(ipathname)
 
-        if paths:
-            kickstart_pathname = paths[0]
+        for ireal_pathname in pathnames:
+            ireal_pathname_lower_basename = os.path.basename(ireal_pathname.lower())
 
-            break
+            for ikickstart2model in KICKSTART_ROMS2MODEL_MAP:
+                k2m_file_names = ikickstart2model['file_names']
+
+                for ik2m_filename_pattern in k2m_file_names:
+                    ik2m_filename_pattern = ik2m_filename_pattern.lower()
+
+                    if fnmatch.fnmatch(ireal_pathname_lower_basename, ik2m_filename_pattern):
+                        kickstart_pathname = ireal_pathname
+                        current_amiga_kickstart2model = ikickstart2model
+
+                        break
+
+                if kickstart_pathname:
+                    break
+
+            if kickstart_pathname:
+                break
 
     if not kickstart_pathname:
         print_log('Kickstart ROM does not exists, checked:\n{paths}'.format(
             paths='\n'.join(KICKSTART_PATHNAMES)
         ))
 
+        print_log('Make sure your kickstart ROM filename is Kickstart<version>.rom')
+        print_log('For example: Kickstart3.1.rom')
+
         sys.exit(1)
 
+    print_log('Amiga model: ' + current_amiga_kickstart2model['amiga_model_full_name'])
+    print_log('Amiga model ID: ' + current_amiga_kickstart2model['amiga_model_id'])
     print_log('Kickstart: ' + kickstart_pathname)
+    print_log('Kickstart version: ' + current_amiga_kickstart2model['kickstart_version'])
+
+    if current_amiga_kickstart2model['amiga_model_id'] not in AMIBERRY_AMIGA_MODEL_SUPPORT:
+        print_log('Amiga model ' + current_amiga_kickstart2model['amiga_model_id'] + ' is not supported by AmiBerry emulator.')
+
+        exit(1)
 
 
-def check_extended_kickstart():
+def setup_extended_kickstart():
     global kickstart_extended_pathname
 
-    print_log('Checking extended kickstart')
+    print_log('Checking and setting extended kickstart')
 
     for ipathname in KICKSTART_EXTENDED_PATHNAMES:
         paths = glob.glob(ipathname)
@@ -316,6 +466,9 @@ def check_extended_kickstart():
         print_log('Extended kickstart ROM does not exists, checked:\n{paths}'.format(
             paths='\n'.join(KICKSTART_EXTENDED_PATHNAMES)
         ))
+
+        if current_amiga_kickstart2model['need_extended_rom']:
+            exit(1)
     else:
         print_log('Extended kickstart: ' + kickstart_extended_pathname)
 
@@ -3096,11 +3249,14 @@ def get_emulator_command_line_config():
     for ioption in get_gui_config_options():
         config_str += ' -s ' + ioption + ' '
 
-    if ' -m CD32 ' in EMULATOR_RUN_PATTERN:
-        # HACK we need to add finegrain_cpu_speed=1024
-        # in order to emulate CD32
-        # maybe it is a bug in the emulator?
-        config_str += ' -s finegrain_cpu_speed=1024 '
+    return config_str
+
+
+def get_emulator_additional_command_line_config():
+    config_str = ''
+
+    for ioption in current_amiga_kickstart2model['additional_config_options']:
+        config_str += ' -s ' + ioption + ' '
 
     return config_str
 
@@ -3123,10 +3279,12 @@ def run_emulator():
 
     media_config = get_media_command_line_config()
     config_options = get_emulator_command_line_config()
+    additional_config_options = get_emulator_additional_command_line_config()
     extended_kickstart = get_ext_kickstart_command_line_config()
 
     pattern = EMULATOR_RUN_PATTERN.format(
         executable=emulator_exe_pathname,
+        amiga_model_id=current_amiga_kickstart2model['amiga_model_id'],
         nr_floppies=MAX_FLOPPIES,
         config_options=config_options,
         kickstart=kickstart_pathname,
@@ -3134,7 +3292,8 @@ def run_emulator():
         floppies=media_config['floppies'],
         floppy_types=media_config['floppy_types'],
         drives=media_config['drives'],
-        cd_drives=media_config['cd_drives']
+        cd_drives=media_config['cd_drives'],
+        additional_config_options=additional_config_options
     )
 
     print_log('Emulator command line: ' + pattern)
@@ -3396,6 +3555,8 @@ def atexit_handler():
 print_app_version()
 check_pre_requirements()
 init_logger()
+setup_amiga_model()
+setup_extended_kickstart()
 mount_tmpfs()
 atexit.register(atexit_handler)
 configure_tmp_ini()
