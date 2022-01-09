@@ -1,5 +1,5 @@
 diff --git a/Android.mk b/Android.mk
-index 37d06503..19eec88e 100644
+index 37d06503..a615c19f 100644
 --- a/Android.mk
 +++ b/Android.mk
 @@ -198,7 +198,9 @@ LOCAL_SRC_FILES := src/archivers/7z/BraIA64.c \
@@ -8,26 +8,26 @@ index 37d06503..19eec88e 100644
                      src/osdep/gui/androidsdl_event.cpp \
 -                    src/osdep/gui/PanelOnScreen.cpp
 +                    src/osdep/gui/PanelOnScreen.cpp \
-+                    src/araamiga/utils.cpp \
-+                    src/araamiga/handler.cpp
++                    src/amipi400/utils.cpp \
++                    src/amipi400/handler.cpp
  
  ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
      LOCAL_SRC_FILES += src/osdep/aarch64_helper_min.s
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5dc5232d..1bba5d3f 100644
+index 5dc5232d..a13d360f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -136,6 +136,8 @@ add_executable(amiberry
          src/osdep/amiberry_gui.cpp
          src/osdep/amiberry_mem.cpp
          src/osdep/amiberry_whdbooter.cpp
-+        src/araamiga/utils.cpp
-+        src/araamiga/handler.cpp
++        src/amipi400/utils.cpp
++        src/amipi400/handler.cpp
          src/osdep/sigsegv_handler.cpp
          src/osdep/retroarch.cpp
          src/sounddep/sound.cpp
 diff --git a/Makefile b/Makefile
-index f70dfbc0..e9ab3ba6 100644
+index f70dfbc0..7925c1d6 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -441,7 +441,10 @@ OBJS =	\
@@ -36,35 +36,35 @@ index f70dfbc0..e9ab3ba6 100644
  	src/osdep/gui/main_window.o \
 -	src/osdep/gui/Navigation.o
 +	src/osdep/gui/Navigation.o \
-+	src/araamiga/handler.o \
-+	src/araamiga/ini-exec.o \
-+	src/araamiga/utils.o
++	src/amipi400/handler.o \
++	src/amipi400/ini-exec.o \
++	src/amipi400/utils.o
  
  ifeq ($(ANDROID), 1)
  OBJS += src/osdep/gui/androidsdl_event.o \
-diff --git a/src/araamiga/consts.h b/src/araamiga/consts.h
+diff --git a/src/amipi400/consts.h b/src/amipi400/consts.h
 new file mode 100644
-index 00000000..07a27dfd
+index 00000000..fc52965c
 --- /dev/null
-+++ b/src/araamiga/consts.h
++++ b/src/amipi400/consts.h
 @@ -0,0 +1,9 @@
-+#ifndef ARAAMIGA_CONSTS_H_
-+#define ARAAMIGA_CONSTS_H_
++#ifndef AMIPI400_CONSTS_H_
++#define AMIPI400_CONSTS_H_
 +
 +#define TMP_INI_FILE "amiberry.tmp.ini"
-+#define APP_NAME "ARAAMIGA"
++#define APP_NAME "AMIPI400"
 +#define APP_VERSION "0.1"
 +#define LINE_BUFFER_LEN 255
 +
-+#endif  // ARAAMIGA_CONSTS_H_
-diff --git a/src/araamiga/externals.h b/src/araamiga/externals.h
++#endif  // AMIPI400_CONSTS_H_
+diff --git a/src/amipi400/externals.h b/src/amipi400/externals.h
 new file mode 100644
-index 00000000..ceba853d
+index 00000000..1b8d83e3
 --- /dev/null
-+++ b/src/araamiga/externals.h
++++ b/src/amipi400/externals.h
 @@ -0,0 +1,14 @@
-+#ifndef ARAAMIGA_EXTERNALS_H_
-+#define ARAAMIGA_EXTERNALS_H_
++#ifndef AMIPI400_EXTERNALS_H_
++#define AMIPI400_EXTERNALS_H_
 +
 +extern struct uae_prefs currprefs, changed_prefs;
 +extern int config_changed;
@@ -76,12 +76,12 @@ index 00000000..ceba853d
 +void disk_insert_force(int num, const char *name, bool forcedwriteprotect);
 +void cfgfile_parse_line(struct uae_prefs* p, char *line, int type);
 +
-+#endif  // ARAAMIGA_EXTERNALS_H_
-diff --git a/src/araamiga/handler.cpp b/src/araamiga/handler.cpp
++#endif  // AMIPI400_EXTERNALS_H_
+diff --git a/src/amipi400/handler.cpp b/src/amipi400/handler.cpp
 new file mode 100644
-index 00000000..dc872456
+index 00000000..d48ffd52
 --- /dev/null
-+++ b/src/araamiga/handler.cpp
++++ b/src/amipi400/handler.cpp
 @@ -0,0 +1,41 @@
 +#include "consts.h"
 +#include "handler.h"
@@ -108,7 +108,7 @@ index 00000000..dc872456
 +}
 +
 +
-+void araamiga_handler_init() {
++void amipi400_handler_init() {
 +    if (signal(SIGUSR1, SIGUSR1_handler) == SIG_ERR) {
 +        my_printf("failed to set signal handler (SIGUSR1)\n");
 +    }
@@ -124,25 +124,25 @@ index 00000000..dc872456
 +
 +    my_printf("v%s\n", APP_VERSION);
 +}
-diff --git a/src/araamiga/handler.h b/src/araamiga/handler.h
+diff --git a/src/amipi400/handler.h b/src/amipi400/handler.h
 new file mode 100644
-index 00000000..9231d227
+index 00000000..3feefbf5
 --- /dev/null
-+++ b/src/araamiga/handler.h
++++ b/src/amipi400/handler.h
 @@ -0,0 +1,8 @@
-+#ifndef ARAAMIGA_HANDLER_H_
-+#define ARAAMIGA_HANDLER_H_
++#ifndef AMIPI400_HANDLER_H_
++#define AMIPI400_HANDLER_H_
 +
 +void SIGUSR1_handler(int signum);
-+void araamiga_handler_init();
++void amipi400_handler_init();
 +void print_version();
 +
-+#endif  // ARAAMIGA_HANDLER_H_
-diff --git a/src/araamiga/ini-exec.cpp b/src/araamiga/ini-exec.cpp
++#endif  // AMIPI400_HANDLER_H_
+diff --git a/src/amipi400/ini-exec.cpp b/src/amipi400/ini-exec.cpp
 new file mode 100644
 index 00000000..e89f5ea3
 --- /dev/null
-+++ b/src/araamiga/ini-exec.cpp
++++ b/src/amipi400/ini-exec.cpp
 @@ -0,0 +1,150 @@
 +#include <string>
 +#include <cstring>
@@ -294,14 +294,14 @@ index 00000000..e89f5ea3
 +
 +    return 0;
 +}
-diff --git a/src/araamiga/ini-exec.h b/src/araamiga/ini-exec.h
+diff --git a/src/amipi400/ini-exec.h b/src/amipi400/ini-exec.h
 new file mode 100644
-index 00000000..ead19c18
+index 00000000..ad76b8bc
 --- /dev/null
-+++ b/src/araamiga/ini-exec.h
++++ b/src/amipi400/ini-exec.h
 @@ -0,0 +1,12 @@
-+#ifndef ARAAMIGA_INI_EXEC_H_
-+#define ARAAMIGA_INI_EXEC_H_
++#ifndef AMIPI400_INI_EXEC_H_
++#define AMIPI400_INI_EXEC_H_
 +
 +#include <string>
 +
@@ -311,12 +311,12 @@ index 00000000..ead19c18
 +void _command_disk_insert_force(const std::string &command_data);
 +void _command_uae_reset(const std::string &command_data);
 +
-+#endif  // ARAAMIGA_INI_EXEC_H_
-diff --git a/src/araamiga/utils.cpp b/src/araamiga/utils.cpp
++#endif  // AMIPI400_INI_EXEC_H_
+diff --git a/src/amipi400/utils.cpp b/src/amipi400/utils.cpp
 new file mode 100644
 index 00000000..05eaf1f2
 --- /dev/null
-+++ b/src/araamiga/utils.cpp
++++ b/src/amipi400/utils.cpp
 @@ -0,0 +1,95 @@
 +#include <iostream>
 +#include <sstream>
@@ -413,14 +413,14 @@ index 00000000..05eaf1f2
 +
 +    va_end(args);
 +}
-diff --git a/src/araamiga/utils.h b/src/araamiga/utils.h
+diff --git a/src/amipi400/utils.h b/src/amipi400/utils.h
 new file mode 100644
-index 00000000..59f36c29
+index 00000000..e6c46c26
 --- /dev/null
-+++ b/src/araamiga/utils.h
++++ b/src/amipi400/utils.h
 @@ -0,0 +1,23 @@
-+#ifndef ARAAMIGA_UTILS_H_
-+#define ARAAMIGA_UTILS_H_
++#ifndef AMIPI400_UTILS_H_
++#define AMIPI400_UTILS_H_
 +
 +#include <string>
 +#include <iostream>
@@ -441,9 +441,9 @@ index 00000000..59f36c29
 +
 +void my_printf(const char *fmt, ...);
 +
-+#endif  // ARAAMIGA_UTILS_H_
++#endif  // AMIPI400_UTILS_H_
 diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp
-index dc1e4210..675aa767 100644
+index dc1e4210..4e700129 100644
 --- a/src/cfgfile.cpp
 +++ b/src/cfgfile.cpp
 @@ -3535,12 +3535,20 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
@@ -457,7 +457,7 @@ index dc1e4210..675aa767 100644
 -			p->input_mouse_untrap &= ~MOUSEUNTRAP_MAGIC;
 -		return 1;
 +	if (!_tcsicmp(option, _T("magic_mouse")) && !_tcsicmp(value, _T("none"))) {
-+		// araamiga: disable mouse ungrab on middle click
++		// amipi400: disable mouse ungrab on middle click
 +		// command line:
 +		// -s magic_mouse=none
 +		p->input_mouse_untrap = MOUSEUNTRAP_NONE;
@@ -474,7 +474,7 @@ index dc1e4210..675aa767 100644
  
  #ifdef GFXFILTER
 diff --git a/src/inputdevice.cpp b/src/inputdevice.cpp
-index 0ca6b6c8..8c2cbb12 100644
+index 0ca6b6c8..c0d9faf9 100644
 --- a/src/inputdevice.cpp
 +++ b/src/inputdevice.cpp
 @@ -4487,7 +4487,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
@@ -482,20 +482,20 @@ index 0ca6b6c8..8c2cbb12 100644
  		break;
  	case AKS_PAUSE:
 -		pausemode(newstate > 0 ? 1 : newstate);
-+		// araamiga: disable pausing by pause/break key
++		// amipi400: disable pausing by pause/break key
 +		// pausemode(newstate > 0 ? 1 : newstate);
  		break;
  	case AKS_SINGLESTEP:
  		if (pause_emulation)
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index cd700f24..e45589be 100644
+index cd700f24..723df686 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
 @@ -62,6 +62,8 @@ int log_scsi;
  int uaelib_debug;
  int pissoff_value = 15000 * CYCLE_UNIT;
  
-+#include "araamiga/handler.h"
++#include "amipi400/handler.h"
 +
  extern FILE* debugfile;
  SDL_Cursor* normalcursor;
@@ -519,7 +519,7 @@ index cd700f24..e45589be 100644
 +			enter_gui_key = get_hotkey_from_config(amiberry_options.default_open_gui_key);
 +	}
 +	else {
-+		// araamiga: open_gui is "none", so "enter_gui_key" will be disabled
++		// amipi400: open_gui is "none", so "enter_gui_key" will be disabled
 +		// command line:
 +		// -s open_gui=none
 +		enter_gui_key.scancode = -1;
@@ -531,21 +531,21 @@ index cd700f24..e45589be 100644
  		abort();
  	}
  
-+	// araamiga: install SIGUSR1 signal handler
-+	araamiga_handler_init();
++	// amipi400: install SIGUSR1 signal handler
++	amipi400_handler_init();
 +
  	alloc_AmigaMem();
  	RescanROMs();
  	uae_time_calibrate();
 diff --git a/src/zfile.cpp b/src/zfile.cpp
-index 59beb4e3..93c59c54 100644
+index 59beb4e3..d6c3ca5c 100644
 --- a/src/zfile.cpp
 +++ b/src/zfile.cpp
 @@ -2458,6 +2458,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
  	int pos, size;
  	uae_u32 crc;
  
-+	// araamiga: disable crc32 to speedup loading from floppy drive
++	// amipi400: disable crc32 to speedup loading from floppy drive
 +	return 0;
 +
  	if (!f)

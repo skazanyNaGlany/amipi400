@@ -31,12 +31,12 @@ except ImportError as xie:
     sys.exit(1)
 
 
-APP_UNIXNAME = 'araamiga'
+APP_UNIXNAME = 'amipi400'
 APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 AMIGA_DISK_DEVICES_MOUNTPOINT = os.path.join(tempfile.gettempdir(), 'amiga_disk_devices')
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
-LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'araamiga.log')
+LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amipi400.log')
 FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 20
 FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
 ENABLE_FLOPPY_DRIVE_SOUND = 'auto'
@@ -74,12 +74,12 @@ MAX_CD_DRIVES = 1
 RE_SIMILAR_ROM = re.compile(r'\(Disk\ \d\ of\ \d\)')
 SIMILAR_ROM = '(Disk {index} of {max_index})'
 KICKSTART_PATHNAMES = [
-    '/boot/araamiga/kickstarts/*.rom',
+    '/boot/amipi400/kickstarts/*.rom',
     '../amiberry/kickstarts/*.rom',
     'kickstarts/*.rom',
 ]
 KICKSTART_EXTENDED_PATHNAMES = [
-    '/boot/araamiga/kickstarts/extended/*.rom',
+    '/boot/amipi400/kickstarts/extended/*.rom',
     '../amiberry/kickstarts/extended/*.rom',
     'kickstarts/extended/*.rom',
 ]
@@ -92,7 +92,7 @@ KICKSTART_EXTENDED_PATHNAMES = [
 # stock Amiga CD32
 # EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
 EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives} {additional_config_options}'
-CONFIG_INI_NAME = '.araamiga.ini'
+CONFIG_INI_NAME = '.amipi400.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
 AUTOSEND_SIGNAL = True
