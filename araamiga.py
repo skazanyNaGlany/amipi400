@@ -58,6 +58,7 @@ ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SET_CACHE_PRESSURE = False
 ENABLE_INTERNAL_DRIVE = True
 ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break compatibility in some games)
+ENABLE_TAB_SHELL = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -1225,14 +1226,17 @@ def keyboard_actions(partitions: dict):
 
 
 def tab_shell():
-    if not tab_pressed:
+    # give the user one second so he can press
+    # TAB key to enter system shell
+    time.sleep(1)
+
+    if not tab_pressed or not ENABLE_TAB_SHELL:
         return
 
     print_log('')
     print_log('Enter system shell')
 
     os.system('/bin/sh')
-    sys.exit(1)
 
 
 def other_actions():
@@ -3568,10 +3572,6 @@ connect_wifi()
 update_physical_floppy_drives()
 print_physical_floppy_drives()
 init_keyboard_listener()
-
-# give the user one second so he can press
-# TAB key to enter system shell
-time.sleep(1)
 tab_shell()
 
 while True:
