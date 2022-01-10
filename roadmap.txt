@@ -25,3 +25,22 @@ OSError: [Errno 22] Invalid argument: '/tmp/amiga_disk_devices'
 
 
 2. long press hard reset not working properly
+
+3. fix fastest configuration (not working) , copy kickstart to /tmp/ with basename to fix it
+
+# stock Amiga 1200
+Kickstart3.1 (amipi400 -m A1200).rom
+Kickstart3.1.rom
+
+# stock Amiga 1200 + 8 MB FAST RAM
+Kickstart3.1 (amipi400 -m A1200, -s cpu_memory_cycle_exact=false, -s fastmem_size=8).rom
+
+# fastest Amiga 1200 + 8 MB FAST RAM
+Kickstart3.1 (amipi400 -s cpu_speed=max, -s cpu_type=68040, -s cpu_model=68040, -s fpu_model=68040, -s cpu_compatible=false, -s cpu_24bit_addressing=false, -s cachesize=16384, -s cpu_memory_cycle_exact=false, -s fastmem_size=8).rom
+
+# stock Amiga CD32
+Kickstart v3.1 rev 40.60 (1993)(Commodore)(CD32).rom
+
+
+-s scsi=false
+-s bsdsocket_emu=true 

@@ -83,14 +83,6 @@ KICKSTART_EXTENDED_PATHNAMES = [
     '../amiberry/kickstarts/extended/*.rom',
     'kickstarts/extended/*.rom',
 ]
-# stock Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
-# stock Amiga 1200 + 8 MB FAST RAM
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
-# fastest Amiga 1200
-# EMULATOR_RUN_PATTERN = '{executable} -G -m A1200 -s cpu_speed=max -s cpu_type=68040 -s cpu_model=68040 -s fpu_model=68040 -s cpu_compatible=false -s cpu_24bit_addressing=false -s cachesize=16384 -s cpu_memory_cycle_exact=false -s fastmem_size=8 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
-# stock Amiga CD32
-# EMULATOR_RUN_PATTERN = '{executable} -G -m CD32 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives}'
 EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives} {additional_config_options}'
 CONFIG_INI_NAME = '.amipi400.ini'
 DEFAULT_BOOT_PRIORITY = 0
@@ -419,7 +411,7 @@ def setup_amiga_model():
 
                     if fnmatch.fnmatch(ireal_pathname_lower_basename, ik2m_filename_pattern):
                         kickstart_pathname = ireal_pathname
-                        current_amiga_kickstart2model = ikickstart2model
+                        current_amiga_kickstart2model = ikickstart2model.copy()
 
                         break
 
@@ -438,11 +430,6 @@ def setup_amiga_model():
         print_log('For example: Kickstart3.1.rom')
 
         sys.exit(1)
-
-    print_log('Amiga model: ' + current_amiga_kickstart2model['amiga_model_full_name'])
-    print_log('Amiga model ID: ' + current_amiga_kickstart2model['amiga_model_id'])
-    print_log('Kickstart: ' + kickstart_pathname)
-    print_log('Kickstart version: ' + current_amiga_kickstart2model['kickstart_version'])
 
     if current_amiga_kickstart2model['amiga_model_id'] not in AMIBERRY_AMIGA_MODEL_SUPPORT:
         print_log('Amiga model ' + current_amiga_kickstart2model['amiga_model_id'] + ' is not supported by AmiBerry emulator.')
@@ -472,6 +459,70 @@ def setup_extended_kickstart():
             exit(1)
     else:
         print_log('Extended kickstart: ' + kickstart_extended_pathname)
+
+
+def overwrite_amiga_config_by_kickstart():
+    global current_amiga_kickstart2model
+
+    kickstart_basename = os.path.basename(kickstart_pathname)
+
+    brackets = re.findall('\((.*?)\)', kickstart_basename)
+    app_name_space = APP_UNIXNAME.lower() + ' '
+    model_sign_space = '-m '
+    setting_sign_space = '-s '
+    thismodule = sys.modules[__name__]
+
+    for istr in brackets:
+        if not istr.startswith(app_name_space):
+            continue
+
+        istr_parts = istr.replace(app_name_space, '', 1).strip().split(',')
+
+        for istr2 in istr_parts:
+            istr2 = istr2.strip()
+
+            if istr2.startswith(model_sign_space):
+                current_amiga_kickstart2model['amiga_model_id'] = istr2.replace(model_sign_space, '', 1)
+            elif istr2.startswith(setting_sign_space):
+                current_amiga_kickstart2model['additional_config_options'].append(
+                    istr2.replace(setting_sign_space, '', 1)
+                )
+            elif istr2.startswith('ENABLE_') or istr2.startswith('DISABLE_'):
+                istr2_parts = istr2.split('=')
+
+                if len(istr2_parts) != 2:
+                    continue
+
+                if not hasattr(thismodule, istr2_parts[0]):
+                    continue
+
+                istr2_parts[1] = istr2_parts[1].lower()
+
+                if istr2_parts[1] == 'true':
+                    setattr(thismodule, istr2_parts[0], True)
+                elif istr2_parts[1] == 'false':
+                    setattr(thismodule, istr2_parts[0], False)
+                elif istr2_parts[1] == 'none':
+                    setattr(thismodule, istr2_parts[0], None)
+                elif istr2_parts[1].isdigit():
+                    setattr(thismodule, istr2_parts[0], int(istr2_parts[1]))
+                else:
+                    # just string
+                    setattr(thismodule, istr2_parts[0], istr2_parts[1])
+
+
+def print_current_amiga_kickstart2model():
+    print_log('Amiga model: ' + current_amiga_kickstart2model['amiga_model_full_name'])
+    print_log('Amiga model ID: ' + current_amiga_kickstart2model['amiga_model_id'])
+    print_log('Kickstart: ' + kickstart_pathname)
+    print_log('Kickstart version: ' + current_amiga_kickstart2model['kickstart_version'])
+
+    if current_amiga_kickstart2model['additional_config_options']:
+        print_log('Additional config options:')
+
+        print_log('\n'.join(
+            current_amiga_kickstart2model['additional_config_options']
+        ))
 
 
 def check_system_binaries():
@@ -3561,6 +3612,8 @@ check_pre_requirements()
 init_logger()
 setup_amiga_model()
 setup_extended_kickstart()
+overwrite_amiga_config_by_kickstart()
+print_current_amiga_kickstart2model()
 mount_tmpfs()
 atexit.register(atexit_handler)
 configure_tmp_ini()
