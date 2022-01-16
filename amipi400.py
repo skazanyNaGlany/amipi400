@@ -274,6 +274,7 @@ soft_resetting = False
 hard_resetting = False
 current_floppy_speed = 100
 current_amiga_kickstart2model = None
+printed_emulator_full_command_line = False
 
 
 def mount_tmpfs():
@@ -3361,17 +3362,13 @@ def get_ext_kickstart_command_line_config():
     return extended_kickstart
 
 
-def run_emulator():
-    global floppies
-
-    print_log('Running emulator')
-
+def get_emulator_full_command_line():
     media_config = get_media_command_line_config()
     config_options = get_emulator_command_line_config()
     additional_config_options = get_emulator_additional_command_line_config()
     extended_kickstart = get_ext_kickstart_command_line_config()
 
-    pattern = EMULATOR_RUN_PATTERN.format(
+    return EMULATOR_RUN_PATTERN.format(
         executable=emulator_exe_pathname,
         amiga_model_id=current_amiga_kickstart2model['amiga_model_id'],
         nr_floppies=MAX_FLOPPIES,
@@ -3384,6 +3381,27 @@ def run_emulator():
         cd_drives=media_config['cd_drives'],
         additional_config_options=additional_config_options
     )
+
+
+def print_emulator_full_command_line():
+    global printed_emulator_full_command_line
+
+    if printed_emulator_full_command_line:
+        return
+
+    pattern = get_emulator_full_command_line()
+
+    print_log('Emulator command line: ' + pattern)
+
+    printed_emulator_full_command_line = True
+
+
+def run_emulator():
+    global floppies
+
+    print_log('Running emulator')
+
+    pattern = get_emulator_full_command_line()
 
     print_log('Emulator command line: ' + pattern)
 
@@ -3728,6 +3746,8 @@ while True:
     if is_emulator_running == False:
         run_emulator()
         reset_audio_lag_fix()
+    elif is_emulator_running == None:
+        print_emulator_full_command_line()
 
     keyboard_actions(partitions)
     update_monitor_state()
