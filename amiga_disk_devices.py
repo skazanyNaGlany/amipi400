@@ -25,6 +25,7 @@ try:
     from errno import ENOENT
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
+    from array import array
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -38,9 +39,13 @@ ENABLE_LOGGER = False
 DISABLE_SWAP = False
 SYNC_DISKS_SECS = 60 * 3
 AMIGA_DEV_TYPE_FLOPPY = 1
+AMIGA_DEV_TYPE_HDF_HDFRDB = 8
+AMIGA_DEV_TYPE_HDF_DISKIMAGE = 2
+AMIGA_DEV_TYPE_HDF  = 5
 FLOPPY_DEVICE_SIZE = 1474560
 FLOPPY_ADF_SIZE = 901120
 FLOPPY_ADF_EXTENSION = '.adf'
+HD_HDF_DISKIMAGE_EXTENSION = '.diskimage.hdf'
 ADF_BOOTBLOCK = numpy.dtype([
     ('DiskType',    numpy.byte,     (4, )   ),
     ('Chksum',      numpy.uint32            ),
@@ -174,6 +179,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def _get_max_file_size(self, ipart_data: dict) -> int:
         if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
             return FLOPPY_ADF_SIZE
+        elif ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+            return ipart_data['size']
 
         return 0
 
@@ -583,8 +590,45 @@ def device_get_public_name(ipart_data: dict):
 
     if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
         pathname += FLOPPY_ADF_EXTENSION
+    elif ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+        pathname += HD_HDF_DISKIMAGE_EXTENSION
 
     return pathname
+
+
+def get_hdf_type(pathname: str) -> int:
+    file_stat = os.stat(pathname)
+
+    with open(pathname, 'rb') as file:
+        data = array('B', file.read(512))
+
+        char_0 = chr(data[0])
+        char_1 = chr(data[1])
+        char_2 = chr(data[2])
+        char_3 = chr(data[3])
+
+        first_4_chars = ''.join([char_0, char_1, char_2, char_3])
+
+        if first_4_chars == 'RDSK':
+            return AMIGA_DEV_TYPE_HDF_HDFRDB
+        elif first_4_chars.startswith('DOS'):
+            if file_stat.st_size < 4 * 1024 * 1024:
+                return AMIGA_DEV_TYPE_HDF_DISKIMAGE
+            else:
+                return AMIGA_DEV_TYPE_HDF
+
+    return None
+
+
+def hdf_type_to_str(hdf_type: int):
+    if hdf_type == AMIGA_DEV_TYPE_HDF_HDFRDB:
+        return 'RDSK'
+    elif hdf_type == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+        return 'DISKIMAGE'
+    elif hdf_type == AMIGA_DEV_TYPE_HDF:
+        return 'HDF'
+
+    return None
 
 
 def cleanup_disk_devices(partitions: dict, disk_devices: dict):
@@ -595,6 +639,51 @@ def cleanup_disk_devices(partitions: dict, disk_devices: dict):
             print_log(ipart_dev, 'ejected')
 
 
+def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+    print_log('{filename} using as ADF'.format(
+        filename=ipart_dev
+    ))
+
+    set_device_read_a_head_sectors(ipart_dev, 0)
+
+    disk_devices[ipart_dev] = ipart_data.copy()
+    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
+    disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+
+
+def add_hdf_diskimage_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+    print_log('{filename} using as HDF (DISKIMAGE)'.format(
+        filename=ipart_dev
+    ))
+
+    disk_devices[ipart_dev] = ipart_data.copy()
+    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_HDF_DISKIMAGE
+    disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+    disk_devices[ipart_dev]['size'] = ipart_data['size']
+
+
+def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+    hdf_type = get_hdf_type(ipart_dev)
+
+    if not hdf_type:
+        # could be iso
+        print_log('{filename} cannot determine disk device type, using DISKIMAGE by default'.format(
+            filename=ipart_dev
+        ))
+
+        hdf_type = AMIGA_DEV_TYPE_HDF_DISKIMAGE
+
+    if hdf_type != AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+        print_log('{filename} {_type} is not supported'.format(
+            filename=ipart_dev,
+            _type=hdf_type_to_str(hdf_type)
+        ))
+
+        return
+
+    add_hdf_diskimage_device(ipart_dev, ipart_data, disk_devices)
+
+
 def add_disk_devices(partitions: dict, disk_devices: dict):
     for ipart_dev, ipart_data in partitions.items():
         if ipart_dev in disk_devices:
@@ -603,21 +692,13 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
         if ipart_data['type'] != 'disk':
             continue
 
-        if ipart_data['size'] != FLOPPY_DEVICE_SIZE:
-            continue
-
         if ipart_data['fstype'] or ipart_data['pttype']:
             continue
 
-        print_log('{filename} using as ADF'.format(
-            filename=ipart_dev
-        ))
-
-        set_device_read_a_head_sectors(ipart_dev, 0)
-
-        disk_devices[ipart_dev] = ipart_data.copy()
-        disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
-        disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+        if ipart_data['size'] == FLOPPY_DEVICE_SIZE:
+            add_adf_disk_device(ipart_dev, ipart_data, disk_devices)
+        else:
+            add_bigger_disk_device(ipart_dev, ipart_data, disk_devices)
 
 
 def is_adf_header(header: bytes) -> bool:
