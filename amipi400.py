@@ -2511,6 +2511,9 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     if hd_no >= MAX_DRIVES:
         return False
 
+    if not is_medium_auto_insert_file(ipart_data):
+        return None
+
     if not drives[hd_no] or drives[hd_no]['pathname'] != mountpoint:
         print_log('Attaching "{mountpoint}" to DH{index}'.format(
             mountpoint=mountpoint,
