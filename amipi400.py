@@ -19,6 +19,7 @@ try:
     import logzero
     import glob
     import atexit
+    import shutil
 
     from collections import OrderedDict
     from typing import Optional, List
@@ -36,6 +37,8 @@ APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 AMIGA_DISK_DEVICES_MOUNTPOINT = os.path.join(tempfile.gettempdir(), 'amiga_disk_devices')
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
+KICKSTART_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart.rom')
+KICKSTART_EXTENDED_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart_ext.rom')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amipi400.log')
 FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 20
 FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
@@ -59,6 +62,7 @@ ENABLE_SET_CACHE_PRESSURE = False
 ENABLE_INTERNAL_DRIVE = True
 ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break compatibility in some games)
 ENABLE_TAB_SHELL = True
+ENABLE_KICKSTART_LONG_FILENAME_FIX = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -523,6 +527,33 @@ def print_current_amiga_kickstart2model():
         print_log('\n'.join(
             current_amiga_kickstart2model['additional_config_options']
         ))
+
+
+def copy_kickstart():
+    global kickstart_pathname
+    global kickstart_extended_pathname
+
+    if not ENABLE_KICKSTART_LONG_FILENAME_FIX:
+        return
+
+    print_log('Copying kickstart and extended kickstart ROM:')
+
+    print_log('{kick_str} -> {kick_dst}'.format(
+        kick_str=kickstart_pathname,
+        kick_dst=KICKSTART_COPY_PATHNAME
+    ))
+    shutil.copyfile(kickstart_pathname, KICKSTART_COPY_PATHNAME)
+
+    kickstart_pathname = KICKSTART_COPY_PATHNAME
+
+    if kickstart_extended_pathname:
+        print_log('{kick_str} -> {kick_dst}'.format(
+            kick_str=kickstart_extended_pathname,
+            kick_dst=KICKSTART_EXTENDED_COPY_PATHNAME
+        ))
+        shutil.copyfile(kickstart_extended_pathname, KICKSTART_EXTENDED_COPY_PATHNAME)
+
+        kickstart_extended_pathname = KICKSTART_EXTENDED_COPY_PATHNAME
 
 
 def check_system_binaries():
@@ -3615,6 +3646,7 @@ setup_extended_kickstart()
 overwrite_amiga_config_by_kickstart()
 print_current_amiga_kickstart2model()
 mount_tmpfs()
+copy_kickstart()
 atexit.register(atexit_handler)
 configure_tmp_ini()
 configure_system()
