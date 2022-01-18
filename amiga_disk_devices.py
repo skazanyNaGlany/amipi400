@@ -38,14 +38,14 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 DISABLE_SWAP = False
 SYNC_DISKS_SECS = 60 * 3
-AMIGA_DEV_TYPE_FLOPPY = 1
-AMIGA_DEV_TYPE_HDF_HDFRDB = 8
-AMIGA_DEV_TYPE_HDF_DISKIMAGE = 2
-AMIGA_DEV_TYPE_HDF = 5
+AMIGA_DISK_DEVICE_TYPE_ADF = 1
+AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
+AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
+AMIGA_DISK_DEVICE_TYPE_HDF = 5
 FLOPPY_DEVICE_SIZE = 1474560
 FLOPPY_ADF_SIZE = 901120
 FLOPPY_ADF_EXTENSION = '.adf'
-HD_HDF_DISKIMAGE_EXTENSION = '.diskimage.hdf'
+HD_HDF_EXTENSION = '.hdf'
 ADF_BOOTBLOCK = numpy.dtype([
     ('DiskType',    numpy.byte,     (4, )   ),
     ('Chksum',      numpy.uint32            ),
@@ -177,9 +177,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def _get_max_file_size(self, ipart_data: dict) -> int:
-        if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
+        if ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_ADF:
             return FLOPPY_ADF_SIZE
-        elif ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+        elif ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE or \
+            ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB or \
+            ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
             return ipart_data['size']
 
         return 0
@@ -588,10 +590,11 @@ def print_partitions(partitions: dict):
 def device_get_public_name(ipart_data: dict):
     pathname = ipart_data['device'].replace(os.path.sep, '__')
 
-    if ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_FLOPPY:
+    if ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_ADF:
         pathname += FLOPPY_ADF_EXTENSION
-    elif ipart_data['amiga_device_type'] == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
-        pathname += HD_HDF_DISKIMAGE_EXTENSION
+    elif ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE or \
+        ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB:
+        pathname += HD_HDF_EXTENSION
 
     return pathname
 
@@ -610,25 +613,43 @@ def get_hdf_type(pathname: str) -> int:
         first_4_chars = ''.join([char_0, char_1, char_2, char_3])
 
         if first_4_chars == 'RDSK':
-            return AMIGA_DEV_TYPE_HDF_HDFRDB
+            return AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB
         elif first_4_chars.startswith('DOS'):
             if file_stat.st_size < 4 * 1024 * 1024:
-                return AMIGA_DEV_TYPE_HDF_DISKIMAGE
+                return AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE
             else:
-                return AMIGA_DEV_TYPE_HDF
+                return AMIGA_DISK_DEVICE_TYPE_HDF
 
     return None
 
 
 def hdf_type_to_str(hdf_type: int):
-    if hdf_type == AMIGA_DEV_TYPE_HDF_HDFRDB:
+    if hdf_type == AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB:
         return 'RDSK'
-    elif hdf_type == AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+    elif hdf_type == AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE:
         return 'DISKIMAGE'
-    elif hdf_type == AMIGA_DEV_TYPE_HDF:
+    elif hdf_type == AMIGA_DISK_DEVICE_TYPE_HDF:
         return 'HDF'
 
     return None
+
+
+def fix_disk_devices(partitions: dict, disk_devices: dict):
+    count_removed = 0
+
+    for device_pathname, device_data in disk_devices.copy().items():
+        if device_pathname not in partitions:
+            continue
+
+        ipart_data = partitions[device_pathname]
+
+        if not is_unknown_disk(ipart_data):
+            print_log(device_pathname, 'removing incorrectly added device')
+
+            del disk_devices[device_pathname]
+            count_removed += 1
+
+    return count_removed
 
 
 def cleanup_disk_devices(partitions: dict, disk_devices: dict):
@@ -647,17 +668,17 @@ def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
     set_device_read_a_head_sectors(ipart_dev, 0)
 
     disk_devices[ipart_dev] = ipart_data.copy()
-    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_FLOPPY
+    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ADF
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
 
 
-def add_hdf_diskimage_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
-    print_log('{filename} using as HDF (DISKIMAGE)'.format(
+def add_hdf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict, _type: int):
+    print_log('{filename} using as HDF'.format(
         filename=ipart_dev
     ))
 
     disk_devices[ipart_dev] = ipart_data.copy()
-    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DEV_TYPE_HDF_DISKIMAGE
+    disk_devices[ipart_dev]['amiga_device_type'] = _type
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
     disk_devices[ipart_dev]['size'] = ipart_data['size']
 
@@ -671,9 +692,11 @@ def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict)
             filename=ipart_dev
         ))
 
-        hdf_type = AMIGA_DEV_TYPE_HDF_DISKIMAGE
+        hdf_type = AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE
 
-    if hdf_type != AMIGA_DEV_TYPE_HDF_DISKIMAGE:
+    if hdf_type != AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE and \
+        hdf_type != AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB and \
+        hdf_type != AMIGA_DISK_DEVICE_TYPE_HDF:
         print_log('{filename} {_type} is not supported'.format(
             filename=ipart_dev,
             _type=hdf_type_to_str(hdf_type)
@@ -681,7 +704,11 @@ def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict)
 
         return
 
-    add_hdf_diskimage_device(ipart_dev, ipart_data, disk_devices)
+    add_hdf_disk_device(ipart_dev, ipart_data, disk_devices, hdf_type)
+
+
+def is_unknown_disk(ipart_data: dict) -> bool:
+    return ipart_data['fstype'] == '' and ipart_data['pttype'] == ''
 
 
 def add_disk_devices(partitions: dict, disk_devices: dict):
@@ -692,7 +719,7 @@ def add_disk_devices(partitions: dict, disk_devices: dict):
         if ipart_data['type'] != 'disk':
             continue
 
-        if ipart_data['fstype'] or ipart_data['pttype']:
+        if not is_unknown_disk(ipart_data):
             continue
 
         if ipart_data['size'] == FLOPPY_DEVICE_SIZE:
@@ -779,7 +806,7 @@ def affect_fs_disk_devices(disk_devices: dict):
     if not fs_instance:
         return
 
-    fs_instance.set_disk_devices(disk_devices)
+    fs_instance.set_disk_devices(disk_devices.copy())
 
 
 def set_device_read_a_head_sectors(device: str, sectors: int):
@@ -919,6 +946,9 @@ def main():
                     print_partitions(partitions)
                     format_devices(partitions, old_partitions)
                     update_disk_devices(partitions, disk_devices)
+                    affect_fs_disk_devices(disk_devices)
+
+                if fix_disk_devices(partitions, disk_devices):
                     affect_fs_disk_devices(disk_devices)
 
                 old_partitions = partitions
