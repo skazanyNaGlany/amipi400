@@ -161,7 +161,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             os.posix_fadvise(
                 self._handles[device_pathname],
                 0,
-                self._get_max_file_size(ipart_data) - 1,
+                ipart_data['size'] - 1,
                 os.POSIX_FADV_DONTNEED
             )
 
@@ -174,17 +174,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 return ipart_data
 
         return None
-
-
-    def _get_max_file_size(self, ipart_data: dict) -> int:
-        if ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_ADF:
-            return FLOPPY_ADF_SIZE
-        elif ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE or \
-            ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB or \
-            ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
-            return ipart_data['size']
-
-        return 0
 
 
     def _save_file_access_time(self, device_pathname: str) -> float:
@@ -277,7 +266,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         return dict(st_mode=(S_IFREG | perm_int_mask),
                     st_nlink=1,
-                    st_size=self._get_max_file_size(ipart_data),
+                    st_size=ipart_data['size'],
                     st_ctime=self._instance_time,
                     st_atime=access_time,
                     st_mtime=modification_time
@@ -295,7 +284,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         self._save_file_access_time(ipart_data['device'])
 
-        file_size = self._get_max_file_size(ipart_data)
+        file_size = ipart_data['size']
 
         if offset + size > file_size:
             size = file_size - offset
@@ -362,7 +351,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         self._save_file_modification_time(ipart_data['device'])
 
-        max_file_size = self._get_max_file_size(ipart_data)
+        max_file_size = ipart_data['size']
         len_data = len(data)
 
         if offset + len_data > max_file_size or offset >= max_file_size:
@@ -662,6 +651,7 @@ def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
     disk_devices[ipart_dev] = ipart_data.copy()
     disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ADF
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+    disk_devices[ipart_dev]['size'] = FLOPPY_ADF_SIZE
 
 
 def add_hdf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict, _type: int):
