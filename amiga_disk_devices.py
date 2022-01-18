@@ -187,11 +187,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return 0
 
 
-    def _save_file_access_time(self,
-        device_pathname: str,
-        is_reading: bool = False,
-        is_writing: bool = False
-    ) -> float:
+    def _save_file_access_time(self, device_pathname: str) -> float:
         current_time = time.time()
 
         self._access_times[device_pathname] = current_time
@@ -211,11 +207,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         try:
             return self._access_times[device]
         except:
-            return self._save_file_access_time(
-                device,
-                False,
-                False
-            )
+            return self._save_file_access_time(device)
 
 
     def _get_file_modification_time(self, device: str) -> float:
@@ -301,7 +293,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
-        self._save_file_access_time(ipart_data['device'], is_reading=True)
+        self._save_file_access_time(ipart_data['device'])
 
         file_size = self._get_max_file_size(ipart_data)
 
@@ -309,14 +301,14 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
-            self._save_file_access_time(ipart_data['device'], is_reading=False)
+            self._save_file_access_time(ipart_data['device'])
 
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
-            self._save_file_access_time(ipart_data['device'], is_reading=False)
+            self._save_file_access_time(ipart_data['device'])
 
             raise FuseOSError(EIO)
 
@@ -328,7 +320,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         while to_read_size > 0:
             try:
-                self._save_file_access_time(ipart_data['device'], is_reading=True)
+                self._save_file_access_time(ipart_data['device'])
 
                 data = os.read(handle, 512)
                 len_data = len(data)
@@ -343,7 +335,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
                 break
 
-        self._save_file_access_time(ipart_data['device'], is_reading=False)
+        self._save_file_access_time(ipart_data['device'])
 
         if ex is not None:
             raise ex
