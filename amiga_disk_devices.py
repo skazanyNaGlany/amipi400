@@ -81,6 +81,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._mutex = threading.Lock()
         self._access_times = {}
         self._modification_times = {}
+        self._last_write_ts = 0
 
 
     access = None
@@ -92,6 +93,21 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     release = None
     releasedir = None
     statfs = None
+
+
+    def get_last_write_ts(self):
+        return self._last_write_ts
+
+
+    def clear_last_write_ts(self):
+        self._last_write_ts = 0
+
+
+    def sync_handles(self):
+        for device_pathname in list(self._handles.keys()):
+            handle = self._handles[device_pathname]
+
+            os.fsync(handle)
 
 
     def set_disk_devices(self, disk_devices: dict):
@@ -188,6 +204,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         current_time = time.time()
 
         self._modification_times[device_pathname] = current_time
+        self._last_write_ts = current_time
 
         return current_time
 
@@ -899,6 +916,32 @@ def init_keyboard_listener():
     keyboard_listener.start()
 
 
+def sync_writes(sync_writes_ts):
+    global fs_instance
+
+    current_ts = time.time()
+
+    if not sync_writes_ts:
+        sync_writes_ts = current_ts
+
+    if current_ts - sync_writes_ts < 1:
+        return sync_writes_ts
+
+    sync_writes_ts = current_ts
+    last_write_ts = fs_instance.get_last_write_ts()
+
+    if not last_write_ts:
+        return sync_writes_ts
+
+    if current_ts - last_write_ts < 1:
+        return sync_writes_ts
+
+    fs_instance.clear_last_write_ts()
+    fs_instance.sync_handles()
+
+    return sync_writes_ts
+
+
 def main():
     partitions = None
     old_partitions = None
@@ -906,6 +949,7 @@ def main():
     sync_process = None
     disk_devices = {}
     loop_counter = 0
+    sync_writes_ts = 0
 
     print_app_version()
     check_pre_requirements()
@@ -932,6 +976,8 @@ def main():
 
                 if fix_disk_devices(partitions, disk_devices):
                     affect_fs_disk_devices(disk_devices)
+
+                sync_writes_ts = sync_writes(sync_writes_ts)
 
                 old_partitions = partitions
                 sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
