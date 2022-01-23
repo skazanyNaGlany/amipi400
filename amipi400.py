@@ -110,6 +110,8 @@ ALT_GR_UK_KEYCODE = 65406
 DEFAULT_FLOPPY_TYPE=0       # 3,5'' DD
 INTERNAL_DRIVE_BOOT_BRIORITY = -128     # -128 = not bootable
 INTERNAL_DRIVE_LABEL = 'AmiPi400_Internal'
+FLOPPY_ADF_EXTENSION = '.adf'
+HD_HDF_EXTENSION = '.hdf'
 KICKSTART_ROMS2MODEL_MAP = [
     # https://fs-uae.net/docs/kickstarts
     {
@@ -232,6 +234,10 @@ AMIBERRY_AMIGA_MODEL_SUPPORT = [
     'A4000',
     'CD32'
 ]
+AMIGA_DISK_DEVICE_TYPE_ADF = 1
+AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
+AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
+AMIGA_DISK_DEVICE_TYPE_HDF = 5
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -1513,6 +1519,13 @@ def get_amiga_disk_devices() -> OrderedDict:
                 if entry.name.startswith('.') or not entry.is_file():
                     continue
 
+                if entry.name.endswith(FLOPPY_ADF_EXTENSION):
+                    disk_device_type = AMIGA_DISK_DEVICE_TYPE_ADF
+                elif entry.name.endswith(HD_HDF_EXTENSION):
+                    disk_device_type = AMIGA_DISK_DEVICE_TYPE_HDF
+                else:
+                    continue
+
                 full_path = public_name_to_system_pathname(entry.name)
 
                 device_data = {
@@ -1526,7 +1539,8 @@ def get_amiga_disk_devices() -> OrderedDict:
                     'device': full_path,
                     'is_floppy_drive': False,
                     'drive_index': get_physical_floppy_drive_index(full_path),
-                    'public_pathname': os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, entry.name)
+                    'public_pathname': os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, entry.name),
+                    'disk_device_type': disk_device_type
                 }
 
                 if device_data['mountpoint']:
@@ -2217,6 +2231,14 @@ def get_label_hard_file_boot_priority(label: str):
     return int(label[9])
 
 
+def get_free_dh_index() -> int:
+    for idh_no, ihd_data in enumerate(drives):
+        if not ihd_data:
+            return idh_no
+
+    return None
+
+
 def force_umount(pathname: str):
     try:
         sh.umount('-l', pathname)
@@ -2427,42 +2449,61 @@ def cleanup_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: dict)
 
     for device_pathname in list(old_amiga_disk_devices.keys()):
         if device_pathname not in amiga_disk_devices:
-            drive_index = old_amiga_disk_devices[device_pathname]['drive_index']
+            old_device_data = old_amiga_disk_devices[device_pathname]
 
-            detach_floppy(drive_index)
-            update_floppy_drive_sound(drive_index)
+            if old_device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_ADF:
+                drive_index = old_device_data['drive_index']
+
+                detach_floppy(drive_index)
+                update_floppy_drive_sound(drive_index)
+            elif old_device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
+                detach_hard_file_by_pathname(old_device_data['public_pathname'])
+
+
+def attach_amiga_adf_disk_device(device_pathname: str, device_data: dict, drive_index: int):
+    if attach_mountpoint_floppy(
+        device_pathname,
+        device_data,
+        device_data['public_pathname'],
+        True
+    ):
+        update_floppy_drive_sound(
+            drive_index
+        )
+
+        return True
+
+    return False
+
+
+def attach_amiga_hdf_disk_device(device_pathname: str, device_data: dict):
+    attach_mountpoint_hard_file(
+        device_pathname,
+        device_data,
+        device_data['public_pathname'],
+        True
+    )
 
 
 def attach_amiga_disk_devices(amiga_disk_devices: dict):
-    attached = []
-    attached_indexes = []
+    attached_floppy_indexes = []
 
     for device_pathname, device_data in amiga_disk_devices.items():
-        drive_index = device_data['drive_index']
+        if device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_ADF:
+            drive_index = device_data['drive_index']
 
-        if drive_index in attached_indexes:
-            # attach only one floppy per index
-            continue
+            if drive_index in attached_floppy_indexes:
+                # attach only one floppy per index
+                continue
 
-        if drive_index >= MAX_FLOPPIES:
-            continue
-
-        if floppies[drive_index]:
-            # already attached at index
-            continue
-
-        if attach_mountpoint_floppy(
-            device_pathname,
-            device_data,
-            device_data['public_pathname'],
-            True
-        ):
-            update_floppy_drive_sound(
+            if attach_amiga_adf_disk_device(
+                device_pathname,
+                device_data,
                 drive_index
-            )
-
-            attached.append(device_pathname)
-            attached_indexes.append(drive_index)
+            ):
+                attached_floppy_indexes.append(drive_index)
+        elif device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
+            attach_amiga_hdf_disk_device(device_pathname, device_data)
 
 
 def process_amiga_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: OrderedDict):
@@ -2542,7 +2583,12 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
     return False
 
 
-def attach_mountpoint_hard_file(ipart_dev, ipart_data):
+def attach_mountpoint_hard_file(
+    ipart_dev,
+    ipart_data,
+    force_file_pathname = None,
+    auto_hd_no = False
+):
     global drives
     global drives_changed
 
@@ -2553,13 +2599,23 @@ def attach_mountpoint_hard_file(ipart_dev, ipart_data):
     ihdf = get_medium_file(
         ipart_dev,
         ipart_data,
-        HARD_FILE_EXTENSIONS
+        HARD_FILE_EXTENSIONS,
+        force_file_pathname
     )
 
     if not ihdf:
         return False
 
-    hd_no = get_label_hard_file_index(ipart_data['label'])
+    if is_hdf_attached(ihdf):
+        return False
+
+    if auto_hd_no:
+        hd_no = get_free_dh_index()
+
+        if hd_no is None:
+            return False
+    else:
+        hd_no = get_label_hard_file_index(ipart_data['label'])
 
     if hd_no >= MAX_DRIVES:
         return False
@@ -2620,11 +2676,7 @@ def process_unmounted(unmounted: list):
                     index=idh_no
                 ))
 
-                is_dir = ihd_data['is_dir']
-
-                drives[idh_no] = None
-                drives_changed = True
-
+                detach_hard_drive(idh_no)
                 detached.append(idevice)
 
         for icd_index, icd_data in enumerate(cd_drives):
@@ -2633,7 +2685,6 @@ def process_unmounted(unmounted: list):
 
             if icd_data['device'] == idevice:
                 detach_cd(icd_index)
-
                 detached.append(idevice)
 
     return detached
@@ -2670,6 +2721,29 @@ def update_floppy_drive_sound(drive_index: int):
         put_command('cfgfile_parse_line_type_all ' + ioption)
 
     put_command('config_changed 1')
+
+
+def detach_hard_drive(idh_no: int) -> dict:
+    global drives
+    global drives_changed
+
+    ientry = drives[idh_no]
+
+    drives[idh_no] = None
+    drives_changed = True
+
+    return ientry
+
+
+def detach_hard_file_by_pathname(pathname: str) -> dict:
+    for index, idrive in enumerate(drives.copy()):
+        if not idrive:
+            continue
+
+        if idrive['pathname'] == pathname:
+            return detach_hard_drive(index)
+
+    return None
 
 
 def detach_floppy(index: int, auto_commit: bool = False) -> dict:
@@ -2771,6 +2845,17 @@ def is_adf_attached(pathname: str) -> bool:
             continue
 
         if ifloppy_data['pathname'] == pathname:
+            return True
+
+    return False
+
+
+def is_hdf_attached(pathname: str) -> bool:
+    for drive_index, drive_data in enumerate(drives):
+        if not drive_data:
+            continue
+
+        if drive_data['pathname'] == pathname:
             return True
 
     return False
@@ -3107,7 +3192,7 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
         reserved = 2
         blocksize = 512
 
-    config.append('hardfile2=rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,uae{controller_index},0'.format(
+    config.append('hardfile2=rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,ide{controller_index}_mainboard,0'.format(
         drive_index=drive_index,
         pathname=idrive['pathname'],
         sectors=sectors,
@@ -3117,7 +3202,7 @@ def get_hdf_drive_config_command_line(drive_index: int, idrive: dict):
         boot_priority=boot_priority,
         controller_index=drive_index
     ))
-    config.append('uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,uae{controller_index},0'.format(
+    config.append('uaehf{drive_index}=hdf,rw,DH{drive_index}:{pathname},{sectors},{surfaces},{reserved},{blocksize},{boot_priority},,ide{controller_index}_mainboard,0'.format(
         drive_index=drive_index,
         pathname=idrive['pathname'],
         sectors=sectors,
@@ -3693,11 +3778,6 @@ while True:
     if partitions != old_partitions:
         failing_devices_ignore = []
 
-    amiga_disk_devices = get_amiga_disk_devices()
-
-    if amiga_disk_devices != old_amiga_disk_devices:
-        process_amiga_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
-
     unmounted = unmount_partitions(partitions, old_partitions)
 
     if unmounted:
@@ -3714,6 +3794,11 @@ while True:
         new_attached = process_new_mounted(partitions, new_mounted)
 
     other_attached = process_other_mounted(partitions)
+
+    amiga_disk_devices = get_amiga_disk_devices()
+
+    if amiga_disk_devices != old_amiga_disk_devices:
+        process_amiga_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
 
     if new_attached or other_attached:
         set_devices_read_a_head(new_attached + other_attached, partitions)
