@@ -837,7 +837,7 @@ def clear_pressed_keys():
     key_shift_pressed = False
 
 
-def format_single_floppy(device: str):
+def quick_format_single_device(device: str):
     try:
         with open(device, 'wb') as f:
             f.write(bytes(1024))
@@ -856,16 +856,22 @@ def rescan_device(device_basename: str):
     ))
 
 
-def format_devices(partitions: dict, old_partitions: dict):
+def format_devices(partitions: dict, old_partitions: dict, loop_counter: int):
     if not is_ctrl_shift_pressed():
         return
 
     clear_pressed_keys()
 
+    if not loop_counter:
+        # do not format on first iteration
+        return
+
     new_devices = find_new_devices(partitions, old_partitions)
 
     if not new_devices:
         return
+
+    to_format = []
 
     for ipart_dev in new_devices:
         ipart_data = partitions[ipart_dev]
@@ -874,16 +880,24 @@ def format_devices(partitions: dict, old_partitions: dict):
             continue
 
         print_log(ipart_dev, 'new')
+        print_log(ipart_dev, 'quick-formatting device')
 
-        if ipart_data['size'] == FLOPPY_DEVICE_SIZE:
-            print_log(ipart_dev, 'formatting floppy in drive')
+        to_format.append(ipart_dev)
 
-            if format_single_floppy(ipart_dev):
-                print_log(ipart_dev, 'scanning')
+        # only one disk device at a time
+        break
 
-                rescan_device(ipart_data['device_basename'])
+    if not to_format:
+        return
 
-                del partitions[ipart_dev]
+    ipart_dev = to_format[0]
+
+    if quick_format_single_device(ipart_dev):
+        print_log(ipart_dev, 'scanning')
+
+        rescan_device(ipart_data['device_basename'])
+
+        del partitions[ipart_dev]
 
 
 def on_key_press(key):
@@ -970,7 +984,7 @@ def main():
                 if partitions != old_partitions:
                     # something changed
                     print_partitions(partitions)
-                    format_devices(partitions, old_partitions)
+                    format_devices(partitions, old_partitions, loop_counter)
                     update_disk_devices(partitions, disk_devices)
                     affect_fs_disk_devices(disk_devices)
 
