@@ -44,3 +44,611 @@ Kickstart v3.1 rev 40.60 (1993)(Commodore)(CD32).rom
 
 -s scsi=false
 -s bsdsocket_emu=true 
+
+
+Bug:
+pi@raspberrypi:~ $ !ls
+ls -l /tmp/amiga_disk_devices/*
+-rw-rw-rw- 1 root root 31457280000 Jan 16 15:17 /tmp/amiga_disk_devices/__dev__sdc.diskimage.hdf
+-rw-rw-rw- 1 root root 31457280000 Jan 16 15:15 /tmp/amiga_disk_devices/__dev__sdd.diskimage.hdf
+pi@raspberrypi:~ $ 
+
+
+
+  STDERR:
+umount: /dev/sda: not mounted.
+
+Failed to force-umount /dev/sda, maybe it is umounted already
+Unmounted partitions
+Detaching "/tmp/amiga_disk_devices/__dev__sda.adf" from DF0
+Attaching "/tmp/amiga_disk_devices/__dev__sdd.diskimage.hdf" to DH2 (HDF)
+Known partitions:
+/dev/sdc
+  mountpoint: 
+  internal_mountpoint: /tmp/amipi400/mountpoints/sdc
+
+Attached hard disks:
+DH0: /tmp/amiga_disk_devices/__dev__sdd.diskimage.hdf
+DH1: /tmp/amiga_disk_devices/__dev__sdd.diskimage.hdf
+DH2: /tmp/amiga_disk_devices/__dev__sdd.diskimage.hdf
+Attached CD images:
+Delete unused mountpoints
+rmdir: failed to remove '/tmp/amipi400/mountpoints/sdc1': Device or resource busy
+rmdir: failed to remove '/tmp/amipi400/mountpoints/sdc2': Device or resource busy
+
+
+
+pathname /dev/sdc
+file_stat os.stat_result(st_mode=24960, st_ino=2053, st_dev=5, st_nlink=1, st_uid=0, st_gid=0, st_size=0, st_atime=1642368991, st_mtime=1642368991, st_ctime=1642368991)
+/dev/sdc data array('B', [250, 51, 192, 142, 208, 188, 0, 124, 139, 244, 80, 7, 80, 31, 251, 252, 191, 0, 6, 185, 0, 1, 242, 165, 234, 29, 6, 0, 0, 190, 190, 7, 179, 4, 128, 60, 128, 116, 14, 128, 60, 0, 117, 28, 131, 198, 16, 254, 203, 117, 239, 205, 24, 139, 20, 139, 76, 2, 139, 238, 131, 198, 16, 254, 203, 116, 26, 128, 60, 0, 116, 244, 190, 139, 6, 172, 60, 0, 116, 11, 86, 187, 7, 0, 180, 14, 205, 16, 94, 235, 240, 235, 254, 191, 5, 0, 187, 0, 124, 184, 1, 2, 87, 205, 19, 95, 115, 12, 51, 192, 205, 19, 79, 117, 237, 190, 163, 6, 235, 211, 190, 194, 6, 191, 254, 125, 129, 61, 85, 170, 117, 199, 139, 245, 234, 0, 124, 0, 0, 73, 110, 118, 97, 108, 105, 100, 32, 112, 97, 114, 116, 105, 116, 105, 111, 110, 32, 116, 97, 98, 108, 101, 0, 69, 114, 114, 111, 114, 32, 108, 111, 97, 100, 105, 110, 103, 32, 111, 112, 101, 114, 97, 116, 105, 110, 103, 32, 115, 121, 115, 116, 101, 109, 0, 77, 105, 115, 115, 105, 110, 103, 32, 111, 112, 101, 114, 97, 116, 105, 110, 103, 32, 115, 121, 115, 116, 101, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 229, 66, 86, 1, 0, 0, 0, 32, 33, 0, 11, 75, 129, 10, 0, 8, 0, 0, 0, 0, 128, 0, 0, 75, 130, 10, 11, 254, 255, 255, 0, 8, 128, 0, 0, 0, 128, 0, 0, 254, 255, 255, 11, 254, 255, 255, 0, 8, 0, 1, 0, 0, 128, 0, 0, 254, 255, 255, 5, 254, 255, 255, 0, 8, 128, 1, 0, 120, 41, 2, 85, 170])
+/dev/sdc char_0 ú
+/dev/sdc char_1 3
+/dev/sdc char_2 À
+/dev/sdc char_3 
+/dev/sdc first_4_chars ú3À
+/dev/sdc cannot determine disk device type, using DISKIMAGE by default
+/dev/sdc using as HDF
+Known partitions:
+/dev/sda
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdb
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdc
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/sdc1
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc2
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc3
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc4
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1024
+  type: part
+
+/dev/sdc5
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc6
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc7
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc8
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc9
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1386217472
+  type: part
+
+/dev/mmcblk0
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 15931539456
+  type: disk
+
+/dev/mmcblk0p1
+  mountpoint: /boot
+  label: boot
+  is_floppy_drive: False
+  size: 268435456
+  type: part
+
+/dev/mmcblk0p2
+  mountpoint: /
+  label: rootfs
+  is_floppy_drive: False
+  size: 15658909696
+  type: part
+
+Known partitions:
+/dev/sda
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdb
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdc
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/sdc1
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc2
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc3
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc4
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1024
+  type: part
+
+/dev/sdc5
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc6
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc7
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc8
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc9
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1386217472
+  type: part
+
+/dev/mmcblk0
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 15931539456
+  type: disk
+
+/dev/mmcblk0p1
+  mountpoint: /boot
+  label: boot
+  is_floppy_drive: False
+  size: 268435456
+  type: part
+
+/dev/mmcblk0p2
+  mountpoint: /
+  label: rootfs
+  is_floppy_drive: False
+  size: 15658909696
+  type: part
+
+Known partitions:
+/dev/sda
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdb
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdc
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/sdc1
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc2
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc3
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc4
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1024
+  type: part
+
+/dev/sdc5
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc6
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc7
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc8
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc9
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1386217472
+  type: part
+
+/dev/sdd
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/mmcblk0
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 15931539456
+  type: disk
+
+/dev/mmcblk0p1
+  mountpoint: /boot
+  label: boot
+  is_floppy_drive: False
+  size: 268435456
+  type: part
+
+/dev/mmcblk0p2
+  mountpoint: /
+  label: rootfs
+  is_floppy_drive: False
+  size: 15658909696
+  type: part
+
+pathname /dev/sdd
+file_stat os.stat_result(st_mode=25008, st_ino=2074, st_dev=5, st_nlink=1, st_uid=0, st_gid=6, st_size=0, st_atime=1642368992, st_mtime=1642368992, st_ctime=1642368992)
+/dev/sdd data array('B', [82, 68, 83, 75, 0, 0, 0, 64, 59, 108, 138, 39, 0, 0, 0, 7, 0, 0, 2, 0, 0, 0, 0, 23, 255, 255, 255, 255, 0, 0, 0, 1, 0, 0, 0, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 253, 247, 0, 0, 0, 63, 0, 0, 0, 15, 0, 0, 0, 1, 0, 0, 253, 247, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 247, 0, 0, 253, 247, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 97, 0, 0, 0, 2, 0, 0, 253, 246, 0, 0, 3, 177, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 85, 65, 69, 45, 73, 68, 69, 32, 95, 95, 100, 101, 118, 95, 95, 115, 100, 100, 46, 100, 105, 115, 107, 32, 48, 46, 55, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+/dev/sdd char_0 R
+/dev/sdd char_1 D
+/dev/sdd char_2 S
+/dev/sdd char_3 K
+/dev/sdd first_4_chars RDSK
+/dev/sdd using as HDF
+Known partitions:
+/dev/sda
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdb
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdc
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/sdc1
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc2
+  mountpoint: 
+  label: AP4_HDF0_1
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc3
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc4
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1024
+  type: part
+
+/dev/sdc5
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc6
+  mountpoint: 
+  label: AP4_DH3
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc7
+  mountpoint: 
+  label: AP4_CD0
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc8
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc9
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1386217472
+  type: part
+
+/dev/sdd
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/mmcblk0
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 15931539456
+  type: disk
+
+/dev/mmcblk0p1
+  mountpoint: /boot
+  label: boot
+  is_floppy_drive: False
+  size: 268435456
+  type: part
+
+/dev/mmcblk0p2
+  mountpoint: /
+  label: rootfs
+  is_floppy_drive: False
+  size: 15658909696
+  type: part
+
+Known partitions:
+/dev/sda
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdb
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1474560
+  type: disk
+
+/dev/sdc
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/sdc1
+  mountpoint: 
+  label: AP4_DF0
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc2
+  mountpoint: 
+  label: AP4_HDF0_1
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc3
+  mountpoint: 
+  label: AP4_HDF1_0
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc4
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 1024
+  type: part
+
+/dev/sdc5
+  mountpoint: 
+  label: AP4_DH2
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc6
+  mountpoint: 
+  label: AP4_DH3
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc7
+  mountpoint: 
+  label: AP4_CD0
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc8
+  mountpoint: 
+  label: AP4_DF1
+  is_floppy_drive: False
+  size: 4294967296
+  type: part
+
+/dev/sdc9
+  mountpoint: 
+  label: AP4_DF2
+  is_floppy_drive: False
+  size: 1386217472
+  type: part
+
+/dev/sdd
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 31457280000
+  type: disk
+
+/dev/mmcblk0
+  mountpoint: 
+  label: 
+  is_floppy_drive: False
+  size: 15931539456
+  type: disk
+
+/dev/mmcblk0p1
+  mountpoint: /boot
+  label: boot
+  is_floppy_drive: False
+  size: 268435456
+  type: part
+
+/dev/mmcblk0p2
+  mountpoint: /
+  label: rootfs
+  is_floppy_drive: False
+  size: 15658909696
+  type: part
+
+Syncing disks
+
+
+  add: sync when last write was 1 second ago
