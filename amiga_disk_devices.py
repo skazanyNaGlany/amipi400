@@ -295,6 +295,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ENABLE_REINIT_HANDLE_AFTER_SECS:
             return
 
+        if ipart_data['amiga_device_type'] != AMIGA_DISK_DEVICE_TYPE_ADF:
+            return
+
         current_time = time.time()
         access_time = self._get_file_access_time(ipart_data['device'])
 
