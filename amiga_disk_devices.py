@@ -36,6 +36,7 @@ APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
+ENABLE_REINIT_HANDLE_AFTER_SECS = 64 * 4
 DISABLE_SWAP = False
 SYNC_DISKS_SECS = 60 * 3
 AMIGA_DISK_DEVICE_TYPE_ADF = 1
@@ -290,6 +291,17 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 )
 
 
+    def _reinit_handle(self, ipart_data):
+        if not ENABLE_REINIT_HANDLE_AFTER_SECS:
+            return
+
+        current_time = time.time()
+        access_time = self._get_file_access_time(ipart_data['device'])
+
+        if current_time - access_time >= ENABLE_REINIT_HANDLE_AFTER_SECS:
+            self._close_handle(ipart_data['device'])
+
+
     def read(self, path, size, offset, fh):
         self._flush_handles()
 
@@ -299,6 +311,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
+        self._reinit_handle(ipart_data)
         self._save_file_access_time(ipart_data['device'])
 
         file_size = ipart_data['size']
