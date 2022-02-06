@@ -502,7 +502,8 @@ def check_system_binaries():
         'sysctl',
         'swapoff',
         'blockdev',
-        'umount'
+        'umount',
+        'hwinfo'
     ]
 
     for ibin in bins:
