@@ -43,10 +43,12 @@ AMIGA_DISK_DEVICE_TYPE_ADF = 1
 AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
 AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
 AMIGA_DISK_DEVICE_TYPE_HDF = 5
+AMIGA_DISK_DEVICE_TYPE_ISO = 10
 FLOPPY_DEVICE_SIZE = 1474560
 FLOPPY_ADF_SIZE = 901120
 FLOPPY_ADF_EXTENSION = '.adf'
 HD_HDF_EXTENSION = '.hdf'
+CD_ISO_EXTENSION = '.iso'
 ADF_BOOTBLOCK = numpy.dtype([
     ('DiskType',    numpy.byte,     (4, )   ),
     ('Chksum',      numpy.uint32            ),
@@ -541,7 +543,36 @@ def sync(sync_disks_ts: int, sync_process):
     return sync_disks_ts, sync_process
 
 
-def get_partitions2() -> 'OrderedDict[str, dict]':
+def is_device_physical_floppy(
+    device_pathname: str,
+    device_data: dict,
+    physical_floppy_drives: dict
+) -> bool:
+    return (
+        device_pathname in physical_floppy_drives
+    ) and \
+    device_data['type'] == 'disk' and \
+    device_data['size'] == FLOPPY_DEVICE_SIZE
+
+
+def is_device_physical_cdrom(
+    device_pathname: str,
+    device_data: dict,
+    physical_cdrom_drives: dict
+) -> bool:
+    return (
+        device_pathname in physical_cdrom_drives
+    ) and device_data['type'] == 'rom'
+
+
+def is_device_physical_disk(device_data: dict) -> bool:
+    return (
+        not device_data['is_floppy_drive'] and
+        not device_data['is_cdrom_drive']
+    ) and device_data['type'] == 'disk'
+
+
+def get_partitions2(physical_cdrom_drives, physical_floppy_drives) -> 'OrderedDict[str, dict]':
     lsblk_buf = StringIO()
     pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)" RO="(.*)"'
     ret: OrderedDict[str, dict] = OrderedDict()
@@ -570,6 +601,8 @@ def get_partitions2() -> 'OrderedDict[str, dict]':
             'device': full_path,
             'device_basename': os.path.basename(full_path),
             'is_floppy_drive': False,
+            'is_cdrom_drive': False,
+            'is_disk_drive': False,
             'size': int(found[1]) if found[1] else 0,
             'type': found[2],
             'fstype': found[6],
@@ -577,6 +610,27 @@ def get_partitions2() -> 'OrderedDict[str, dict]':
             'is_readable': True,    # in Linux device is reabable by default
             'is_writable': bool(int(found[8])) == False
         }
+
+        device_data['is_floppy_drive'] = is_device_physical_floppy(
+            full_path,
+            device_data,
+            physical_floppy_drives
+        )
+        device_data['is_cdrom_drive'] = is_device_physical_cdrom(
+            full_path,
+            device_data,
+            physical_cdrom_drives
+        )
+        device_data['is_disk_drive'] = is_device_physical_disk(
+            device_data
+        )
+
+        if device_data['is_cdrom_drive']:
+            device_data['is_writable'] = False
+
+            if is_unknown_disk(device_data):
+                # do not add unknown cd/dvd
+                continue
 
         ret[full_path] = device_data
 
@@ -595,6 +649,8 @@ def print_partitions(partitions: dict):
         print_log('  mountpoint: ' + str(value['mountpoint']))
         print_log('  label: ' + str(value['label']))
         print_log('  is_floppy_drive: ' + str(value['is_floppy_drive']))
+        print_log('  is_cdrom_drive: ' + str(value['is_cdrom_drive']))
+        print_log('  is_disk_drive: ' + str(value['is_disk_drive']))
         print_log('  size: ' + str(value['size']))
         print_log('  type: ' + str(value['type']))
 
@@ -609,6 +665,8 @@ def device_get_public_name(ipart_data: dict):
     elif ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE or \
         ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB:
         pathname += HD_HDF_EXTENSION
+    if ipart_data['amiga_device_type'] == AMIGA_DISK_DEVICE_TYPE_ISO:
+        pathname += CD_ISO_EXTENSION
 
     return pathname
 
@@ -657,7 +715,7 @@ def fix_disk_devices(partitions: dict, disk_devices: dict):
 
         ipart_data = partitions[device_pathname]
 
-        if not is_unknown_disk(ipart_data):
+        if not is_unknown_disk(ipart_data) and not ipart_data['is_cdrom_drive']:
             print_log(device_pathname, 'removing incorrectly added device')
 
             del disk_devices[device_pathname]
@@ -695,7 +753,6 @@ def add_hdf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict, _t
     disk_devices[ipart_dev] = ipart_data.copy()
     disk_devices[ipart_dev]['amiga_device_type'] = _type
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
-    disk_devices[ipart_dev]['size'] = ipart_data['size']
 
 
 def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
@@ -722,25 +779,39 @@ def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict)
     add_hdf_disk_device(ipart_dev, ipart_data, disk_devices, hdf_type)
 
 
+def add_iso_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+    print_log('{filename} using as ISO'.format(
+        filename=ipart_dev
+    ))
+
+    disk_devices[ipart_dev] = ipart_data.copy()
+    disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ISO
+    disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+
+
 def is_unknown_disk(ipart_data: dict) -> bool:
     return ipart_data['fstype'] == '' and ipart_data['pttype'] == ''
 
 
-def add_disk_devices(partitions: dict, disk_devices: dict):
+def add_disk_devices2(partitions: dict, disk_devices: dict):
     for ipart_dev, ipart_data in partitions.items():
         if ipart_dev in disk_devices:
             continue
 
-        if ipart_data['type'] != 'disk':
-            continue
+        unknown = is_unknown_disk(ipart_data)
 
-        if not is_unknown_disk(ipart_data):
-            continue
+        if ipart_data['is_floppy_drive']:
+            if not unknown:
+                continue
 
-        if ipart_data['size'] == FLOPPY_DEVICE_SIZE:
             add_adf_disk_device(ipart_dev, ipart_data, disk_devices)
-        else:
+        elif ipart_data['is_disk_drive']:
+            if not unknown:
+                continue
+
             add_bigger_disk_device(ipart_dev, ipart_data, disk_devices)
+        elif ipart_data['is_cdrom_drive']:
+            add_iso_disk_device(ipart_dev, ipart_data, disk_devices)
 
 
 def is_adf_header(header: bytes) -> bool:
@@ -777,7 +848,7 @@ def read_file_header(filename: str) -> Optional[bytes]:
 
 def update_disk_devices(partitions: dict, disk_devices: dict):
     cleanup_disk_devices(partitions, disk_devices)
-    add_disk_devices(partitions, disk_devices)
+    add_disk_devices2(partitions, disk_devices)
 
 
 def run_fuse(disk_devices: dict):
@@ -895,6 +966,9 @@ def format_devices(partitions: dict, old_partitions: dict, loop_counter: int):
         if ipart_data['type'] != 'disk':
             continue
 
+        if not ipart_data['is_writable']:
+            continue
+
         print_log(ipart_dev, 'new')
         print_log(ipart_dev, 'quick-formatting device')
 
@@ -972,6 +1046,121 @@ def sync_writes(sync_writes_ts):
     return sync_writes_ts
 
 
+def find_physical_cdrom_drives():
+    hwinfo_buf = StringIO()
+    cdrom_data_started = False
+    ret = []
+
+    # hwinfo --cdrom --short
+    sh.hwinfo('--cdrom', '--short', _out=hwinfo_buf)
+
+    for line in hwinfo_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if line == 'cdrom:':
+            cdrom_data_started = True
+            continue
+
+        if not cdrom_data_started:
+            continue
+
+        if not line.startswith('/dev/'):
+            continue
+
+        parts = line.split(maxsplit=1)
+
+        if len(parts) != 2:
+            continue
+
+        device = parts[0]
+
+        if not os.path.exists(device) or not os.path.isfile(device):
+            ret.append(device)
+
+    return ret
+
+
+def update_physical_cdrom_drives(physical_cdrom_drives):
+    print_log('Getting information about physical cd-rom drives')
+
+    index = 0
+
+    for device in sorted(find_physical_cdrom_drives()):
+        physical_cdrom_drives[device] = {
+            'index': index,
+            'device': device
+        }
+
+        index += 1
+
+
+def print_physical_cdrom_drives(physical_cdrom_drives):
+    print_log('Physical cd-rom drives:')
+
+    for key, drive_data in physical_cdrom_drives.items():
+        print_log(key)
+
+        print_log('  index: ' + str(drive_data['index']))
+        print_log('  device: ' + drive_data['device'])
+
+        print_log()
+
+
+def find_physical_floppy_drives():
+    ufiformat_buf = StringIO()
+    ret = []
+
+    # ufiformat --inquire --quiet
+    sh.ufiformat('--inquire', '--quiet', _out=ufiformat_buf)
+
+    for line in ufiformat_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        parts = line.split()
+
+        if len(parts) != 2:
+            continue
+
+        device = parts[0]
+
+        if not os.path.exists(device) or not os.path.isfile(device):
+            ret.append(device)
+
+    return ret
+
+
+def update_physical_floppy_drives(physical_floppy_drives):
+    print_log('Getting information about physical floppy drives')
+
+    index = 0
+
+    for device in sorted(find_physical_floppy_drives()):
+        physical_floppy_drives[device] = {
+            'index': index,
+            'device': device
+        }
+
+        index += 1
+
+
+def print_physical_floppy_drives(physical_floppy_drives):
+    print_log('Physical floppy drives:')
+
+    for key, drive_data in physical_floppy_drives.items():
+        print_log(key)
+
+        print_log('  index: ' + str(drive_data['index']))
+        print_log('  device: ' + drive_data['device'])
+
+        print_log()
+
+
 def main():
     partitions = None
     old_partitions = None
@@ -980,6 +1169,8 @@ def main():
     disk_devices = {}
     loop_counter = 0
     sync_writes_ts = 0
+    physical_floppy_drives = OrderedDict()
+    physical_cdrom_drives = OrderedDict()
 
     print_app_version()
     check_pre_requirements()
@@ -990,12 +1181,19 @@ def main():
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
     init_fuse(disk_devices)
+    update_physical_floppy_drives(physical_floppy_drives)
+    print_physical_floppy_drives(physical_floppy_drives)
+    update_physical_cdrom_drives(physical_cdrom_drives)
+    print_physical_cdrom_drives(physical_cdrom_drives)
     init_keyboard_listener()
 
     try:
         while True:
             if not MAIN_LOOP_MAX_COUNTER or loop_counter < MAIN_LOOP_MAX_COUNTER:
-                partitions = get_partitions2()
+                partitions = get_partitions2(
+                    physical_cdrom_drives,
+                    physical_floppy_drives
+                )
 
                 if partitions != old_partitions:
                     # something changed
