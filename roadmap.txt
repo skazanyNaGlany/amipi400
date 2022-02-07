@@ -652,3 +652,26 @@ Syncing disks
 
 
   add: sync when last write was 1 second ago
+
+
+
+
+
+
+
+
+
+Remove drive_index from add entry, implement
+detach_hard_file_by_pathname or something like that:
+                drive_index = old_device_data['drive_index']
+
+                detach_floppy(drive_index)
+                update_floppy_drive_sound(drive_index)
+
+
+
+Remove print_log
+
+
+
+Fix bug when reinserting raw CD ISO is not seen in the WB
