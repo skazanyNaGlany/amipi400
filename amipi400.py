@@ -112,6 +112,7 @@ INTERNAL_DRIVE_BOOT_BRIORITY = -128     # -128 = not bootable
 INTERNAL_DRIVE_LABEL = 'AmiPi400_Internal'
 FLOPPY_ADF_EXTENSION = '.adf'
 HD_HDF_EXTENSION = '.hdf'
+CD_ISO_EXTENSION = '.iso'
 KICKSTART_ROMS2MODEL_MAP = [
     # https://fs-uae.net/docs/kickstarts
     {
@@ -238,6 +239,7 @@ AMIGA_DISK_DEVICE_TYPE_ADF = 1
 AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
 AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
 AMIGA_DISK_DEVICE_TYPE_HDF = 5
+AMIGA_DISK_DEVICE_TYPE_ISO = 10
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -281,6 +283,7 @@ hard_resetting = False
 current_floppy_speed = 100
 current_amiga_kickstart2model = None
 printed_emulator_full_command_line = False
+physical_cdrom_drives = OrderedDict()
 
 
 def mount_tmpfs():
@@ -591,7 +594,8 @@ def check_system_binaries():
         'iw',
         'tee',
         'sudo',
-        'amixer'
+        'amixer',
+        'hwinfo'
     ]
 
     for ibin in bins:
@@ -1523,6 +1527,8 @@ def get_amiga_disk_devices() -> OrderedDict:
                     disk_device_type = AMIGA_DISK_DEVICE_TYPE_ADF
                 elif entry.name.endswith(HD_HDF_EXTENSION):
                     disk_device_type = AMIGA_DISK_DEVICE_TYPE_HDF
+                elif entry.name.endswith(CD_ISO_EXTENSION):
+                    disk_device_type = AMIGA_DISK_DEVICE_TYPE_ISO
                 else:
                     continue
 
@@ -2068,6 +2074,13 @@ def unmount_partitions(partitions: dict, old_partitions: dict):
     return unmounted
 
 
+def get_physical_cdrom_drive_index(device_pathname: str) -> Optional[int]:
+    if device_pathname not in physical_cdrom_drives:
+        return None
+
+    return physical_cdrom_drives[device_pathname]['index']
+
+
 def get_physical_floppy_drive_index(device_pathname: str) -> Optional[int]:
     if device_pathname not in physical_floppy_drives:
         return None
@@ -2382,7 +2395,7 @@ def process_other_mounted_cd(partitions: dict) -> List[str]:
             drive_index = get_label_cd_index(ipart_data['label'])
 
             if drive_index in attached_indexes:
-                # attach only one floppy per index
+                # attach only one cd per index
                 continue
 
             if attach_mountpoint_cd_image(ipart_dev, ipart_data):
@@ -2458,6 +2471,8 @@ def cleanup_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: dict)
                 update_floppy_drive_sound(drive_index)
             elif old_device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
                 detach_hard_file_by_pathname(old_device_data['public_pathname'])
+            elif old_device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_ISO:
+                detach_iso_file_by_pathname(old_device_data['public_pathname'])
 
 
 def attach_amiga_adf_disk_device(device_pathname: str, device_data: dict, drive_index: int):
@@ -2485,6 +2500,15 @@ def attach_amiga_hdf_disk_device(device_pathname: str, device_data: dict):
     )
 
 
+def attach_amiga_iso_disk_device(device_pathname: str, device_data: dict):
+    attach_mountpoint_cd_image(
+        device_pathname,
+        device_data,
+        device_data['public_pathname'],
+        True
+    )
+
+
 def attach_amiga_disk_devices(amiga_disk_devices: dict):
     attached_floppy_indexes = []
 
@@ -2504,6 +2528,8 @@ def attach_amiga_disk_devices(amiga_disk_devices: dict):
                 attached_floppy_indexes.append(drive_index)
         elif device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_HDF:
             attach_amiga_hdf_disk_device(device_pathname, device_data)
+        elif device_data['disk_device_type'] == AMIGA_DISK_DEVICE_TYPE_ISO:
+            attach_amiga_iso_disk_device(device_pathname, device_data)
 
 
 def process_amiga_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices: OrderedDict):
@@ -2746,6 +2772,17 @@ def detach_hard_file_by_pathname(pathname: str) -> dict:
     return None
 
 
+def detach_iso_file_by_pathname(pathname: str) -> dict:
+    for icd_index, icd_data in enumerate(cd_drives.copy()):
+        if not icd_data:
+            continue
+
+        if icd_data['pathname'] == pathname:
+            return detach_cd(icd_index)
+
+    return None
+
+
 def detach_floppy(index: int, auto_commit: bool = False) -> dict:
     global floppies
 
@@ -2861,6 +2898,17 @@ def is_hdf_attached(pathname: str) -> bool:
     return False
 
 
+def is_iso_attached(pathname: str) -> bool:
+    for icd_index, icd_data in enumerate(cd_drives):
+        if not icd_data:
+            continue
+
+        if icd_data['pathname'] == pathname:
+            return True
+
+    return False
+
+
 def attach_mountpoint_floppy(
     ipart_dev,
     ipart_data,
@@ -2885,7 +2933,10 @@ def attach_mountpoint_floppy(
         return False
 
     if target_idf_index is None:
-        index = get_proper_floppy_index(ipart_data['label'], ipart_data['device'])
+        index = get_proper_floppy_index(
+            ipart_data['label'],
+            ipart_data['device']
+        )
     else:
         index = target_idf_index
 
@@ -2935,7 +2986,12 @@ def attach_mountpoint_floppy(
     return False
 
 
-def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_pathname: str = None):
+def attach_mountpoint_cd_image(
+    ipart_dev: str,
+    ipart_data: dict,
+    force_file_pathname: str = None,
+    using_amiga_disk_devices = False
+):
     global cd_drives
     global drives_changed
 
@@ -2953,9 +3009,15 @@ def attach_mountpoint_cd_image(ipart_dev: str, ipart_data: dict, force_file_path
     if not icdimage:
         return False
 
-    index = get_label_cd_index(ipart_data['label'])
+    if using_amiga_disk_devices:
+        index = get_physical_cdrom_drive_index(ipart_data['device'])
+    else:
+        index = get_label_cd_index(ipart_data['label'])
 
     if index >= MAX_CD_DRIVES:
+        return False
+
+    if is_iso_attached(icdimage):
         return False
 
     if not cd_drives[index] or cd_drives[index]['pathname'] != icdimage:
@@ -3669,6 +3731,69 @@ def update_physical_floppy_drives():
         index += 1
 
 
+def find_physical_cdrom_drives():
+    hwinfo_buf = StringIO()
+    cdrom_data_started = False
+    ret = []
+
+    # hwinfo --cdrom --short
+    sh.hwinfo('--cdrom', '--short', _out=hwinfo_buf)
+
+    for line in hwinfo_buf.getvalue().splitlines():
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if line == 'cdrom:':
+            cdrom_data_started = True
+            continue
+
+        if not cdrom_data_started:
+            continue
+
+        if not line.startswith('/dev/'):
+            continue
+
+        parts = line.split(maxsplit=1)
+
+        if len(parts) != 2:
+            continue
+
+        device = parts[0]
+
+        if not os.path.exists(device) or not os.path.isfile(device):
+            ret.append(device)
+
+    return ret
+
+
+def update_physical_cdrom_drives(physical_cdrom_drives):
+    print_log('Getting information about physical cd-rom drives')
+
+    index = 0
+
+    for device in sorted(find_physical_cdrom_drives()):
+        physical_cdrom_drives[device] = {
+            'index': index,
+            'device': device
+        }
+
+        index += 1
+
+
+def print_physical_cdrom_drives(physical_cdrom_drives):
+    print_log('Physical cd-rom drives:')
+
+    for key, drive_data in physical_cdrom_drives.items():
+        print_log(key)
+
+        print_log('  index: ' + str(drive_data['index']))
+        print_log('  device: ' + drive_data['device'])
+
+        print_log()
+
+
 def is_alt_gr_key(key) -> bool:
     if key == Key.alt_gr:
         return True
@@ -3762,6 +3887,8 @@ delete_unused_mountpoints()
 connect_wifi()
 update_physical_floppy_drives()
 print_physical_floppy_drives()
+update_physical_cdrom_drives(physical_cdrom_drives)
+print_physical_cdrom_drives(physical_cdrom_drives)
 init_keyboard_listener()
 tab_shell()
 
