@@ -51,7 +51,7 @@ ENABLE_AUDIO_LAG_FIX = True
 ENABLE_FORCE_FSCK = 'auto'
 ENABLE_FORCE_RW = False
 ENABLE_CD_REPLACE_RESTART = False
-ENABLE_CD_PERM_FIX = True
+ENABLE_CD_PERM_FIX = False
 ENABLE_MOUSE_UNGRAB = False
 ENABLE_F12_OPEN_GUI = True
 # ENABLE_F12_OPEN_GUI = False
@@ -2831,7 +2831,7 @@ def detach_cd(index: int, auto_commit: bool = False) -> dict:
     cd_drives[index] = None
     cd_empty_pathname = get_empty_cd_pathname()
 
-    put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
+    put_command('cfgfile_parse_line_type_all cdimage{index}={pathname},image'.format(
         index=index,
         pathname=cd_empty_pathname
     ))
@@ -3038,7 +3038,7 @@ def attach_mountpoint_cd_image(
         if ENABLE_CD_REPLACE_RESTART:
             drives_changed = True
 
-        put_command('cfgfile_parse_line_type_all cdimage{index}={pathname}'.format(
+        put_command('cfgfile_parse_line_type_all cdimage{index}={pathname},image'.format(
             index=index,
             pathname=icdimage
         ))
@@ -3287,6 +3287,11 @@ def get_empty_cd_pathname():
 
 def get_cd_drives_command_line_config() -> str:
     str_cd_drives = ''
+    attached_count = 0
+
+    # CD support must be enabled via command line
+    # in order to work
+    str_cd_drives += ' cd32cd=1 '
 
     for index, icd in enumerate(cd_drives):
         pathname = ''
@@ -3299,10 +3304,16 @@ def get_cd_drives_command_line_config() -> str:
         if not pathname:
             continue
 
-        str_cd_drives += ' -s cdimage{index}="{pathname}" '.format(
+        str_cd_drives += ' -s cdimage{index}="{pathname},image" '.format(
             index=index,
             pathname=pathname
         )
+        attached_count += 1
+
+    if not attached_count:
+        # always set at least one CD setting at command line
+        # in order to work
+        str_cd_drives += ' -s cdimage0=",image" '
 
     return str_cd_drives
 
