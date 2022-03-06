@@ -1,8 +1,8 @@
 diff --git a/Android.mk b/Android.mk
-index 37d06503..a615c19f 100644
+index 57951f92..4307145a 100644
 --- a/Android.mk
 +++ b/Android.mk
-@@ -198,7 +198,9 @@ LOCAL_SRC_FILES := src/archivers/7z/BraIA64.c \
+@@ -254,7 +254,9 @@ LOCAL_SRC_FILES := src/akiko.cpp \
                      src/osdep/gui/main_window.cpp \
                      src/osdep/gui/Navigation.cpp \
                      src/osdep/gui/androidsdl_event.cpp \
@@ -14,10 +14,10 @@ index 37d06503..a615c19f 100644
  ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
      LOCAL_SRC_FILES += src/osdep/aarch64_helper_min.s
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5dc5232d..a13d360f 100644
+index c07bbb7d..907668c9 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -136,6 +136,8 @@ add_executable(amiberry
+@@ -188,6 +188,8 @@ add_executable(amiberry
          src/osdep/amiberry_gui.cpp
          src/osdep/amiberry_mem.cpp
          src/osdep/amiberry_whdbooter.cpp
@@ -27,10 +27,10 @@ index 5dc5232d..a13d360f 100644
          src/osdep/retroarch.cpp
          src/sounddep/sound.cpp
 diff --git a/Makefile b/Makefile
-index f70dfbc0..7925c1d6 100644
+index 3d159313..58751e85 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -441,7 +441,10 @@ OBJS =	\
+@@ -549,7 +549,10 @@ OBJS = \
  	src/osdep/gui/PanelPrio.o \
  	src/osdep/gui/PanelSavestate.o \
  	src/osdep/gui/main_window.o \
@@ -443,13 +443,13 @@ index 00000000..e6c46c26
 +
 +#endif  // AMIPI400_UTILS_H_
 diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp
-index dc1e4210..4e700129 100644
+index bb0f9008..f61c438b 100644
 --- a/src/cfgfile.cpp
 +++ b/src/cfgfile.cpp
-@@ -3535,12 +3535,20 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
- 	if (cfgfile_multichoice(option, value, _T("debugging_features"), &p->debugging_features, debugfeatures))
+@@ -3607,12 +3607,20 @@ static int cfgfile_parse_host(struct uae_prefs* p, TCHAR* option, TCHAR* value)
  		return 1;
- #endif
+ 	}
+ 
 -	if (cfgfile_yesno(option, value, _T("magic_mouse"), &vb)) {
 -		if (vb)
 -			p->input_mouse_untrap |= MOUSEUNTRAP_MAGIC;
@@ -474,10 +474,10 @@ index dc1e4210..4e700129 100644
  
  #ifdef GFXFILTER
 diff --git a/src/inputdevice.cpp b/src/inputdevice.cpp
-index 0ca6b6c8..c0d9faf9 100644
+index ba2d279d..35854dbc 100644
 --- a/src/inputdevice.cpp
 +++ b/src/inputdevice.cpp
-@@ -4487,7 +4487,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
+@@ -4471,7 +4471,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
  	//	NMI_delayed();
  		break;
  	case AKS_PAUSE:
@@ -488,10 +488,10 @@ index 0ca6b6c8..c0d9faf9 100644
  	case AKS_SINGLESTEP:
  		if (pause_emulation)
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index cd700f24..723df686 100644
+index 5e29411d..f5cf8997 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
-@@ -62,6 +62,8 @@ int log_scsi;
+@@ -81,6 +81,8 @@ int log_scsi;
  int uaelib_debug;
  int pissoff_value = 15000 * CYCLE_UNIT;
  
@@ -500,7 +500,7 @@ index cd700f24..723df686 100644
  extern FILE* debugfile;
  SDL_Cursor* normalcursor;
  
-@@ -146,12 +148,20 @@ amiberry_hotkey get_hotkey_from_config(std::string config_option)
+@@ -167,12 +169,20 @@ amiberry_hotkey get_hotkey_from_config(std::string config_option)
  
  void set_key_configs(struct uae_prefs* p)
  {
@@ -527,7 +527,7 @@ index cd700f24..723df686 100644
  	// if nothing was found in amiberry.conf either, we default back to F12
  	if (enter_gui_key.scancode == 0)
  		enter_gui_key.scancode = SDL_SCANCODE_F12;
-@@ -2952,6 +2962,9 @@ int main(int argc, char* argv[])
+@@ -3344,6 +3354,9 @@ int main(int argc, char* argv[])
  		abort();
  	}
  
@@ -538,10 +538,10 @@ index cd700f24..723df686 100644
  	RescanROMs();
  	uae_time_calibrate();
 diff --git a/src/zfile.cpp b/src/zfile.cpp
-index 59beb4e3..d6c3ca5c 100644
+index d514c8b8..8edff596 100644
 --- a/src/zfile.cpp
 +++ b/src/zfile.cpp
-@@ -2458,6 +2458,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
+@@ -2490,6 +2490,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
  	int pos, size;
  	uae_u32 crc;
  
