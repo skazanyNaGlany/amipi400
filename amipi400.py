@@ -63,6 +63,7 @@ ENABLE_INTERNAL_DRIVE = True
 ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break compatibility in some games)
 ENABLE_TAB_SHELL = True
 ENABLE_KICKSTART_LONG_FILENAME_FIX = True
+ENABLE_COPY_DF_MUTE_SOUNDS = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -240,6 +241,7 @@ AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
 AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
 AMIGA_DISK_DEVICE_TYPE_HDF = 5
 AMIGA_DISK_DEVICE_TYPE_ISO = 10
+COPY_DF_BLOCK_SIZE=32768
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -284,6 +286,12 @@ current_floppy_speed = 100
 current_amiga_kickstart2model = None
 printed_emulator_full_command_line = False
 physical_cdrom_drives = OrderedDict()
+copy_df_step = -1
+copy_df_source_index = 0
+copy_df_target_index = 0
+copy_df_source_data = None
+copy_df_target_data = None
+is_emulator_paused = False
 
 
 def mount_tmpfs():
@@ -1047,6 +1055,118 @@ def find_similar_roms(rom_path: str) -> list:
     return sorted(similar)
 
 
+def process_floppy_copy_action(action: str):
+    global copy_df_step
+    global copy_df_source_index
+    global copy_df_target_index
+
+    if copy_df_step != -1:
+        # copy operation already pending
+        return
+
+    action_data = action[4:].strip()
+
+    if not startswith_dfX(action_data) or not endswith_dfX(action_data):
+        return
+
+    if len(action_data) != 6:
+        return
+
+    source_idf_index = int(action_data[2])
+    target_idf_index = int(action_data[5])
+
+    if source_idf_index == target_idf_index:
+        return
+
+    if not floppies[source_idf_index] or not floppies[target_idf_index]:
+        return
+
+    copy_df_step = 0
+    copy_df_source_index = source_idf_index
+    copy_df_target_index = target_idf_index
+
+    print_log('Low-level copying {source_file} to {target_file}'.format(
+        source_file=floppies[source_idf_index]['pathname'],
+        target_file=floppies[target_idf_index]['pathname']
+    ))
+
+
+def copy_df():
+    global copy_df_step
+    global copy_df_source_data
+    global copy_df_target_data
+
+    if copy_df_step < 0:
+        return
+
+    if copy_df_step == 0:
+        # mute all sounds
+        if ENABLE_COPY_DF_MUTE_SOUNDS:
+            mute_system_sound()
+            disable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_df_step == 1:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 2:
+        # eject both floppies
+        copy_df_source_data = detach_floppy(copy_df_source_index)
+        copy_df_target_data = detach_floppy(copy_df_target_index)
+
+        update_floppy_drive_sound(copy_df_source_index)
+        update_floppy_drive_sound(copy_df_target_index)
+
+        put_local_commit_command(1)
+    elif copy_df_step == 3:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 4:
+        # pause emulator
+        pause_emulator(True)
+    elif copy_df_step == 5:
+        # copy using DD
+        os.system('dd bs={block_size} if="{source_file}" of="{target_file}"'.format(
+            block_size=COPY_DF_BLOCK_SIZE,
+            source_file=copy_df_source_data['pathname'],
+            target_file=copy_df_target_data['pathname']
+        ))
+    elif copy_df_step == 6:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 7:
+        # unpause emulator
+        pause_emulator(False)
+    elif copy_df_step == 8:
+        # unmute all sounds
+        if ENABLE_COPY_DF_MUTE_SOUNDS:
+            unmute_system_sound()
+            enable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_df_step == 9:
+        if attach_mountpoint_floppy(
+            copy_df_source_data['device'],
+            copy_df_source_data['medium'],
+            copy_df_source_data['pathname'],
+            target_idf_index=copy_df_source_index
+        ):
+            update_floppy_drive_sound(copy_df_source_index)
+
+        if attach_mountpoint_floppy(
+            copy_df_target_data['device'],
+            copy_df_target_data['medium'],
+            copy_df_target_data['pathname'],
+            target_idf_index=copy_df_target_index
+        ):
+            update_floppy_drive_sound(copy_df_target_index)
+
+        put_local_commit_command(1)
+
+        copy_df_step = -1
+
+    if copy_df_step != -1:
+        copy_df_step += 1
+
+
 def process_floppy_replace_by_index_action(action: str):
     global floppies
 
@@ -1281,6 +1401,11 @@ def process_tab_combo_action(partitions: dict, action: str):
         #
         # wifi,<country code in ISO/IEC 3166-1 alpha2>,<ssid>,<password>
         process_wifi_action(action)
+    elif action.startswith('copy') and len_action == 10 and endswith_dfX(action):
+        # copydf<source index>df<target index>
+        process_floppy_copy_action(action)
+    # elif action == 'test':
+    #     toggle_pause()
 
 
 def action_to_str(action: list) -> str:
@@ -1708,11 +1833,11 @@ def set_system_sound_mute_state(state: str):
     os.system('amixer set Master ' + state)
 
 
-def disable_sound():
+def disable_emulator_sound():
     set_sound_output_state('interrupts')
 
 
-def enable_sound():
+def enable_emulator_sound():
     set_sound_output_state('exact')
 
 
@@ -1909,6 +2034,10 @@ def affect_floppy_speed():
 
 
 def affect_paula_volume2():
+    if copy_df_step != -1:
+        # low-level copying in progress, skip
+        return
+
     is_accessing = is_accessing_physical_floppy3()
 
     if is_accessing:
@@ -1916,16 +2045,16 @@ def affect_paula_volume2():
 
         if is_caching:
             mute_system_sound()
-            disable_sound()
+            disable_emulator_sound()
     else:
         is_writing = is_writing_physical_floppy()
 
         if is_writing:
             mute_system_sound()
-            disable_sound()
+            disable_emulator_sound()
         else:
             unmute_system_sound()
-            enable_sound()
+            enable_emulator_sound()
 
 
 def send_SIGUSR1_signal():
@@ -2737,6 +2866,20 @@ def mountpoint_find_files(mountpoint: str, patterns: List[str]) -> list:
     # TODO change sorting to sort like linux "find | sort"
     # TODO so by file extension then name
     return sorted(files, key=lambda x: os.path.splitext(x)[-1])
+
+
+def toggle_pause():
+    pause_emulator(not is_emulator_paused)
+
+
+def pause_emulator(pause: bool):
+    global is_emulator_paused
+
+    is_emulator_paused = pause
+    pause_str = '1' if pause else '0'
+
+    put_command('pause_emulation ' + pause_str)
+    put_command('config_changed 1')
 
 
 def update_floppy_drive_sound(drive_index: int):
@@ -3976,6 +4119,7 @@ while True:
     update_monitor_state()
     other_actions()
     audio_lag_fix()
+    copy_df()
     sync()
 
     time.sleep(100 / 1000)
