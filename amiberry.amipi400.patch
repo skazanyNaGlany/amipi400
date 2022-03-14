@@ -488,7 +488,7 @@ index ba2d279d..35854dbc 100644
  	case AKS_SINGLESTEP:
  		if (pause_emulation)
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index 5e29411d..f5cf8997 100644
+index 5e29411d..7d4cf366 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
 @@ -81,6 +81,8 @@ int log_scsi;
@@ -527,7 +527,27 @@ index 5e29411d..f5cf8997 100644
  	// if nothing was found in amiberry.conf either, we default back to F12
  	if (enter_gui_key.scancode == 0)
  		enter_gui_key.scancode = SDL_SCANCODE_F12;
-@@ -3344,6 +3354,9 @@ int main(int argc, char* argv[])
+@@ -425,8 +435,17 @@ void releasecapture(struct AmigaMonitor* mon)
+ 	if (!mon_cursorclipped)
+ 		return;
+ 	SDL_SetWindowGrab(mon->sdl_window, SDL_FALSE);
+-	SDL_SetRelativeMouseMode(SDL_FALSE);
+-	SDL_ShowCursor(SDL_ENABLE);
++
++	if (currprefs.input_mouse_untrap != MOUSEUNTRAP_NONE) {
++		// amipi400: do not show mouse cursor when
++		// command line:
++		// magic_mouse=none
++		// used with:
++		// pause_emulation=1
++		SDL_SetRelativeMouseMode(SDL_FALSE);
++		SDL_ShowCursor(SDL_ENABLE);
++	}
++
+ 	mon_cursorclipped = 0;
+ }
+ 
+@@ -3344,6 +3363,9 @@ int main(int argc, char* argv[])
  		abort();
  	}
  
