@@ -24,7 +24,7 @@ try:
     from collections import OrderedDict
     from typing import Optional, List
     from io import StringIO
-    from pynput.keyboard import Key, Listener
+    from pynput.keyboard import Key, Listener, Controller, KeyCode
     from configparser import ConfigParser, ParsingError
     from array import array
 except ImportError as xie:
@@ -64,6 +64,7 @@ ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break comp
 ENABLE_TAB_SHELL = True
 ENABLE_KICKSTART_LONG_FILENAME_FIX = True
 ENABLE_COPY_DF_MUTE_SOUNDS = True
+ENABLE_CMD_ENTER_KP_ENTER_MAPPING = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
 AUDIO_LAG_STEP_1_SECS = 6
@@ -107,6 +108,8 @@ DEFAULT_READ_A_HEAD_SECTORS = 256
 WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
 ALT_GR_KEYCODE = 65027
 ALT_GR_UK_KEYCODE = 65406
+KP_ENTER_KEYCODE = 65421
+PYNPUT_KP_ENTER_KEY = KeyCode(KP_ENTER_KEYCODE)
 DEFAULT_FLOPPY_TYPE=0       # 3,5'' DD
 INTERNAL_DRIVE_BOOT_BRIORITY = -128     # -128 = not bootable
 INTERNAL_DRIVE_LABEL = 'AmiPi400_Internal'
@@ -255,6 +258,8 @@ key_ctrl_pressed = False
 key_alt_pressed = False
 key_alt_gr_pressed = False
 key_shift_r_pressed = False
+key_cmd_pressed = False
+key_enter_pressed = False
 ctrl_alt_alt_gr_press_ts = 0
 tab_combo = []
 tab_pressed = False
@@ -278,6 +283,7 @@ sound_output_state = 'exact'
 last_system_sound_mute_state = 'unmute'
 failing_devices_ignore = []
 keyboard_listener = None
+keyboard_controller = None
 is_emulator_running = None
 soft_resetting = False
 hard_resetting = False
@@ -728,6 +734,21 @@ def ctrl_alt_alt_gr_keyboard_action():
         if ENABLE_CTRL_ALT_ALT_GR_LONG_PRESS_KILL:
             if current_time - ctrl_alt_alt_gr_press_ts >= 8:
                 hard_reset_emulator()
+
+
+def numpad_kp_enter_press():
+    global keyboard_controller
+
+    if not ENABLE_CMD_ENTER_KP_ENTER_MAPPING:
+        return
+
+    if key_cmd_pressed and key_enter_pressed:
+        keyboard_controller.press(PYNPUT_KP_ENTER_KEY)
+        keyboard_controller.release(PYNPUT_KP_ENTER_KEY)
+
+
+def numpad_keys_action():
+    numpad_kp_enter_press()
 
 
 def string_unify2(str_to_unify: str, exclude = None) -> str:
@@ -1439,6 +1460,7 @@ def tab_combo_actions(partitions: dict):
 
 def keyboard_actions(partitions: dict):
     ctrl_alt_alt_gr_keyboard_action()
+    numpad_keys_action()
     tab_combo_actions(partitions)
 
 
@@ -1774,6 +1796,12 @@ def init_keyboard_listener():
 
     keyboard_listener = Listener(on_press=on_key_press, on_release=on_key_release)
     keyboard_listener.start()
+
+
+def init_keyboard_controller():
+    global keyboard_controller
+
+    keyboard_controller = Controller()
 
 
 def process_changed_drives():
@@ -3966,6 +3994,8 @@ def on_key_press(key):
     global key_alt_gr_pressed
     global key_shift_r_pressed
     global tab_pressed
+    global key_cmd_pressed
+    global key_enter_pressed
     global ctrl_alt_alt_gr_press_ts
     global tab_combo
 
@@ -3984,6 +4014,12 @@ def on_key_press(key):
     if key == Key.tab:
         tab_pressed = True
 
+    if key == Key.cmd:
+        key_cmd_pressed = True
+
+    if key == Key.enter:
+        key_enter_pressed = True
+
     if key == Key.esc:
         tab_combo = []
     else:
@@ -3999,6 +4035,8 @@ def on_key_release(key):
     global key_alt_gr_pressed
     global key_shift_r_pressed
     global tab_pressed
+    global key_cmd_pressed
+    global key_enter_pressed
     global ctrl_alt_alt_gr_press_ts
 
     if key == Key.ctrl:
@@ -4015,6 +4053,12 @@ def on_key_release(key):
 
     if key == Key.tab:
         tab_pressed = False
+
+    if key == Key.cmd:
+        key_cmd_pressed = False
+
+    if key == Key.enter:
+        key_enter_pressed = False
 
 
 def atexit_handler():
@@ -4043,6 +4087,7 @@ print_physical_floppy_drives()
 update_physical_cdrom_drives(physical_cdrom_drives)
 print_physical_cdrom_drives(physical_cdrom_drives)
 init_keyboard_listener()
+init_keyboard_controller()
 tab_shell()
 
 while True:
