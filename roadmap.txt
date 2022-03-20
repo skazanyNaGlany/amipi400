@@ -6,6 +6,7 @@ as loading .adf file(s) from ARA_DF0
 4. DONE: Amiga CD32 support
 
 Bugs:
+1. Move graphics settings on the command lint to the end
 1. When attaching many floppies at the same index, with new mountpoints:
 Mounting /dev/sda as /tmp/araamiga/mountpoints/sda
 Mounting /dev/sdb as /tmp/araamiga/mountpoints/sdb
@@ -675,3 +676,10 @@ Remove print_log
 
 
 Fix bug when reinserting raw CD ISO is not seen in the WB
+
+
+
+
+./amiberry -G -m A1200 -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8    -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow
+./amiberry -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8 --autoload /media/pi/AP4_LHA0/Superfrog_v1.4_0035.lha 
+./amiberry -G -m A1200 -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8 --autoload /media/pi/AP4_LHA0/Superfrog_v1.4_0035.lha     -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow
