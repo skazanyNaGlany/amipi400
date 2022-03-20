@@ -103,7 +103,6 @@ FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
 CD_PERM_FIX_PATHNAME = '/dev/zero'
-FLOPPY_DRIVE_READ_A_HEAD_SECTORS = 0
 DEFAULT_READ_A_HEAD_SECTORS = 256
 WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
 ALT_GR_KEYCODE = 65027
@@ -2681,11 +2680,11 @@ def set_devices_read_a_head(devices: List[str], partitions: dict):
         if not is_mountpoint_attached(ipart_data['mountpoint']):
             continue
 
-        if not ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
-            if ipart_data['is_floppy_drive']:
-                set_device_read_a_head_sectors(ipart_dev, FLOPPY_DRIVE_READ_A_HEAD_SECTORS)
-            else:
+        if ipart_data['is_floppy_drive']:
+            if ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
                 set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
+            else:
+                set_device_read_a_head_sectors(ipart_dev, 0)
 
 
 def set_device_read_a_head_sectors(device: str, sectors: int):

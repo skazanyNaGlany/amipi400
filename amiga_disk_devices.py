@@ -37,7 +37,9 @@ TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 ENABLE_REINIT_HANDLE_AFTER_SECS = 0
+ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 DISABLE_SWAP = False
+DEFAULT_READ_A_HEAD_SECTORS = 256
 SYNC_DISKS_SECS = 60 * 3
 AMIGA_DISK_DEVICE_TYPE_ADF = 1
 AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
@@ -738,7 +740,10 @@ def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
         filename=ipart_dev
     ))
 
-    set_device_read_a_head_sectors(ipart_dev, 0)
+    if ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
+        set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
+    else:
+        set_device_read_a_head_sectors(ipart_dev, 0)
 
     disk_devices[ipart_dev] = ipart_data.copy()
     disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ADF
