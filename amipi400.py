@@ -64,6 +64,7 @@ ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break comp
 ENABLE_TAB_SHELL = True
 ENABLE_KICKSTART_LONG_FILENAME_FIX = True
 ENABLE_COPY_DF_MUTE_SOUNDS = True
+ENABLE_COPY_HD_MUTE_SOUNDS = True
 ENABLE_CMD_ENTER_KP_ENTER_MAPPING = True
 DISABLE_SWAP = False
 AUDIO_LAG_STEP_0_SECS = 30  # original
@@ -244,6 +245,7 @@ AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE = 2
 AMIGA_DISK_DEVICE_TYPE_HDF = 5
 AMIGA_DISK_DEVICE_TYPE_ISO = 10
 COPY_DF_BLOCK_SIZE=32768
+COPY_HD_BLOCK_SIZE='8M'
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
@@ -298,6 +300,11 @@ copy_df_source_data = None
 copy_df_target_data = None
 is_emulator_paused = False
 numlock_state = False
+copy_hd_step = -1
+copy_hd_source_index = 0
+copy_hd_target_index = 0
+copy_hd_source_data = None
+copy_hd_target_data = None
 
 
 def mount_tmpfs():
@@ -1081,7 +1088,7 @@ def process_floppy_copy_action(action: str):
     global copy_df_source_index
     global copy_df_target_index
 
-    if copy_df_step != -1:
+    if is_copying_data():
         # copy operation already pending
         return
 
@@ -1106,9 +1113,48 @@ def process_floppy_copy_action(action: str):
     copy_df_source_index = source_idf_index
     copy_df_target_index = target_idf_index
 
-    print_log('Low-level copying {source_file} to {target_file}'.format(
+    print_log('Low-level copying {source_file} to {target_file} (DF)'.format(
         source_file=floppies[source_idf_index]['pathname'],
         target_file=floppies[target_idf_index]['pathname']
+    ))
+
+
+def process_hd_copy_action(action: str):
+    global copy_hd_step
+    global copy_hd_source_index
+    global copy_hd_target_index
+
+    if is_copying_data():
+        # copy operation already pending
+        return
+
+    action_data = action[4:].strip()
+
+    if not startswith_dhX(action_data) or not endswith_dhX(action_data):
+        return
+
+    if len(action_data) != 6:
+        return
+
+    source_hd_index = int(action_data[2])
+    target_hd_index = int(action_data[5])
+
+    if source_hd_index == target_hd_index:
+        return
+
+    if not drives[source_hd_index] or not drives[target_hd_index]:
+        return
+
+    if not drives[source_hd_index]['is_hdf'] or not drives[target_hd_index]['is_hdf']:
+        return
+
+    copy_hd_step = 0
+    copy_hd_source_index = source_hd_index
+    copy_hd_target_index = target_hd_index
+
+    print_log('Low-level copying {source_file} to {target_file} (HDD)'.format(
+        source_file=drives[source_hd_index]['pathname'],
+        target_file=drives[target_hd_index]['pathname']
     ))
 
 
@@ -1148,7 +1194,7 @@ def copy_df():
         pause_emulator(True)
     elif copy_df_step == 5:
         # copy using DD
-        os.system('dd bs={block_size} if="{source_file}" of="{target_file}"'.format(
+        os.system('dd bs={block_size} if="{source_file}" of="{target_file}" status=progress'.format(
             block_size=COPY_DF_BLOCK_SIZE,
             source_file=copy_df_source_data['pathname'],
             target_file=copy_df_target_data['pathname']
@@ -1189,6 +1235,76 @@ def copy_df():
 
     if copy_df_step != -1:
         copy_df_step += 1
+
+
+def copy_hd():
+    global copy_hd_step
+    global copy_hd_source_data
+    global copy_hd_target_data
+
+    if copy_hd_step < 0:
+        return
+
+    if copy_hd_step == 0:
+        enable_numlock()
+
+        # mute all sounds
+        if ENABLE_COPY_HD_MUTE_SOUNDS:
+            mute_system_sound()
+            disable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_hd_step == 1:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_hd_step == 2:
+        # eject both hdds
+        copy_hd_source_data = detach_hard_drive(copy_hd_source_index, False)
+        copy_hd_target_data = detach_hard_drive(copy_hd_target_index, False)
+    elif copy_hd_step == 3:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_hd_step == 4:
+        # pause emulator
+        pause_emulator(True)
+    elif copy_hd_step == 5:
+        # copy using DD
+        os.system('dd bs={block_size} count=10 if="{source_file}" of="{target_file}" status=progress'.format(
+            block_size=COPY_HD_BLOCK_SIZE,
+            source_file=copy_hd_source_data['pathname'],
+            target_file=copy_hd_target_data['pathname']
+        ))
+    elif copy_hd_step == 6:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_hd_step == 7:
+        # unpause emulator
+        pause_emulator(False)
+    elif copy_hd_step == 8:
+        # unmute all sounds
+        if ENABLE_COPY_HD_MUTE_SOUNDS:
+            unmute_system_sound()
+            enable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_hd_step == 9:
+        attach_mountpoint_hard_file(
+            copy_hd_source_data['device'],
+            copy_hd_source_data['medium'],
+            copy_hd_source_data['pathname'],
+            target_idh_index=copy_hd_source_index
+        )
+        attach_mountpoint_hard_file(
+            copy_hd_target_data['device'],
+            copy_hd_target_data['medium'],
+            copy_hd_target_data['pathname'],
+            target_idh_index=copy_hd_target_index
+        )
+
+        disable_numlock()
+
+        copy_hd_step = -1
+
+    if copy_hd_step != -1:
+        copy_hd_step += 1
 
 
 def process_floppy_replace_by_index_action(action: str):
@@ -1366,6 +1482,22 @@ def endswith_dfX(s: str) -> bool:
     return False
 
 
+def startswith_dhX(s: str) -> bool:
+    for dh_index in range(MAX_DRIVES):
+        if s.startswith('dh' + str(dh_index)):
+            return True
+
+    return False
+
+
+def endswith_dhX(s: str) -> bool:
+    for dh_index in range(MAX_DRIVES):
+        if s.endswith('dh' + str(dh_index)):
+            return True
+
+    return False
+
+
 def startswith_cdX(s: str) -> bool:
     for icd_index in range(MAX_CD_DRIVES):
         if s.startswith('cd' + str(icd_index)):
@@ -1425,9 +1557,13 @@ def process_tab_combo_action(partitions: dict, action: str):
         #
         # wifi,<country code in ISO/IEC 3166-1 alpha2>,<ssid>,<password>
         process_wifi_action(action)
-    elif action.startswith('copy') and len_action == 10 and endswith_dfX(action):
-        # copydf<source index>df<target index>
-        process_floppy_copy_action(action)
+    elif action.startswith('copy') and len_action == 10:
+        if endswith_dfX(action):
+            # copydf<source index>df<target index>
+            process_floppy_copy_action(action)
+        elif endswith_dhX(action):
+            # copydh<source index>dh<target index>
+            process_hd_copy_action(action)
     # elif action == 'test':
     #     toggle_pause()
 
@@ -1574,6 +1710,10 @@ def run_audio_lag_fix_step_0():
 def run_audio_lag_fix_step_1():
     # original, working
     set_amiberry_sound_mode(None, 16384)
+
+
+def is_copying_data() -> bool:
+    return copy_df_step != -1 or copy_hd_step != -1
 
 
 def is_sync_running() -> bool:
@@ -2086,7 +2226,7 @@ def affect_floppy_speed():
 
 
 def affect_paula_volume2():
-    if copy_df_step != -1:
+    if is_copying_data():
         # low-level copying in progress, skip
         return
 
@@ -2775,6 +2915,7 @@ def attach_mountpoint_hard_disk(ipart_dev, ipart_data):
             'label': ipart_data['label'],
             'device': ipart_dev,
             'config': ipart_data['config'],
+            'medium': ipart_data,
             'is_dir': True,
             'is_hdf': False
         }
@@ -2794,7 +2935,8 @@ def attach_mountpoint_hard_file(
     ipart_dev,
     ipart_data,
     force_file_pathname = None,
-    auto_hd_no = False
+    auto_hd_no = False,
+    target_idh_index = None
 ):
     global drives
     global drives_changed
@@ -2822,7 +2964,10 @@ def attach_mountpoint_hard_file(
         if hd_no is None:
             return False
     else:
-        hd_no = get_label_hard_file_index(ipart_data['label'])
+        if target_idh_index is None:
+            hd_no = get_label_hard_file_index(ipart_data['label'])
+        else:
+            hd_no = target_idh_index
 
     if hd_no >= MAX_DRIVES:
         return False
@@ -2839,6 +2984,7 @@ def attach_mountpoint_hard_file(
             'label': ipart_data['label'],
             'device': ipart_dev,
             'config': ipart_data['config'],
+            'medium': ipart_data,
             'is_dir': False,
             'is_hdf': True
         }
@@ -2944,14 +3090,16 @@ def update_floppy_drive_sound(drive_index: int):
     put_command('config_changed 1')
 
 
-def detach_hard_drive(idh_no: int) -> dict:
+def detach_hard_drive(idh_no: int, toggle_drives_changed: bool = True) -> dict:
     global drives
     global drives_changed
 
     ientry = drives[idh_no]
 
     drives[idh_no] = None
-    drives_changed = True
+
+    if toggle_drives_changed:
+        drives_changed = True
 
     return ientry
 
@@ -4189,6 +4337,7 @@ while True:
     other_actions()
     audio_lag_fix()
     copy_df()
+    copy_hd()
     sync()
 
     time.sleep(100 / 1000)
