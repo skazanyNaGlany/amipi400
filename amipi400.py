@@ -1268,7 +1268,7 @@ def copy_hd():
         pause_emulator(True)
     elif copy_hd_step == 5:
         # copy using DD
-        os.system('dd bs={block_size} count=10 if="{source_file}" of="{target_file}" status=progress'.format(
+        os.system('dd bs={block_size} if="{source_file}" of="{target_file}" status=progress'.format(
             block_size=COPY_HD_BLOCK_SIZE,
             source_file=copy_hd_source_data['pathname'],
             target_file=copy_hd_target_data['pathname']
