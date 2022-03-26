@@ -297,6 +297,7 @@ copy_df_target_index = 0
 copy_df_source_data = None
 copy_df_target_data = None
 is_emulator_paused = False
+numlock_state = False
 
 
 def mount_tmpfs():
@@ -1120,6 +1121,8 @@ def copy_df():
         return
 
     if copy_df_step == 0:
+        enable_numlock()
+
         # mute all sounds
         if ENABLE_COPY_DF_MUTE_SOUNDS:
             mute_system_sound()
@@ -1180,6 +1183,7 @@ def copy_df():
             update_floppy_drive_sound(copy_df_target_index)
 
         put_local_commit_command(1)
+        disable_numlock()
 
         copy_df_step = -1
 
@@ -1789,6 +1793,27 @@ def print_physical_floppy_drives():
         print_log('  device: ' + drive_data['device'])
 
         print_log()
+
+
+def set_numlock_state(state: bool):
+    global numlock_state
+
+    if state == numlock_state:
+        return
+
+    os.system('echo {state} | sudo tee /sys/class/leds/input?::numlock/brightness > /dev/null'.format(
+        state = 1 if state else 0
+    ))
+
+    numlock_state = state
+
+
+def enable_numlock():
+    set_numlock_state(True)
+
+
+def disable_numlock():
+    set_numlock_state(False)
 
 
 def init_keyboard_listener():
