@@ -56,11 +56,13 @@ ADF_BOOTBLOCK = numpy.dtype([
     ('Chksum',      numpy.uint32            ),
     ('Rootblock',   numpy.uint32            )
 ])
+SYSTEM_INTERNAL_SD_CARD_NAME = 'mmcblk0'
 MAIN_LOOP_MAX_COUNTER = 0
 
 
 fs_instance = None
-key_ctrl_pressed = False
+key_cmd_pressed = False
+key_delete_pressed = False
 key_shift_pressed = False
 
 
@@ -597,12 +599,17 @@ def get_partitions2(physical_cdrom_drives, physical_floppy_drives) -> 'OrderedDi
         found = search_result.groups()
 
         full_path = found[5]
+        device_basename = os.path.basename(full_path)
+
+        if device_basename.startswith(SYSTEM_INTERNAL_SD_CARD_NAME):
+            continue
+
         device_data = {
             'mountpoint': found[3],
             'label': found[4],
             'config': None,
             'device': full_path,
-            'device_basename': os.path.basename(full_path),
+            'device_basename': device_basename,
             'is_floppy_drive': False,
             'is_cdrom_drive': False,
             'is_disk_drive': False,
@@ -656,6 +663,8 @@ def print_partitions(partitions: dict):
         print_log('  is_disk_drive: ' + str(value['is_disk_drive']))
         print_log('  size: ' + str(value['size']))
         print_log('  type: ' + str(value['type']))
+        print_log('  pttype: ' + str(value['pttype']))
+        print_log('  fstype: ' + str(value['fstype']))
 
         print_log()
 
@@ -709,7 +718,7 @@ def hdf_type_to_str(hdf_type: int):
     return None
 
 
-def fix_disk_devices(partitions: dict, disk_devices: dict):
+def remove_known_disk_devices(partitions: dict, disk_devices: dict):
     count_removed = 0
 
     for device_pathname, device_data in disk_devices.copy().items():
@@ -717,8 +726,11 @@ def fix_disk_devices(partitions: dict, disk_devices: dict):
             continue
 
         ipart_data = partitions[device_pathname]
+        remove = not is_unknown_disk(ipart_data) and \
+            not ipart_data['is_cdrom_drive'] and \
+            not device_data['force_add']
 
-        if not is_unknown_disk(ipart_data) and not ipart_data['is_cdrom_drive']:
+        if remove:
             print_log(device_pathname, 'removing incorrectly added device')
 
             del disk_devices[device_pathname]
@@ -735,7 +747,12 @@ def cleanup_disk_devices(partitions: dict, disk_devices: dict):
             print_log(ipart_dev, 'ejected')
 
 
-def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+def add_adf_disk_device(
+    ipart_dev: str,
+    ipart_data: dict,
+    disk_devices: dict,
+    force_add: bool = False
+):
     print_log('{filename} using as ADF'.format(
         filename=ipart_dev
     ))
@@ -749,9 +766,16 @@ def add_adf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
     disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ADF
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
     disk_devices[ipart_dev]['size'] = FLOPPY_ADF_SIZE
+    disk_devices[ipart_dev]['force_add'] = force_add
 
 
-def add_hdf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict, _type: int):
+def add_hdf_disk_device(
+    ipart_dev: str,
+    ipart_data: dict,
+    disk_devices: dict,
+    _type: int,
+    force_add: bool = False
+):
     print_log('{filename} using as HDF'.format(
         filename=ipart_dev
     ))
@@ -759,9 +783,15 @@ def add_hdf_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict, _t
     disk_devices[ipart_dev] = ipart_data.copy()
     disk_devices[ipart_dev]['amiga_device_type'] = _type
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+    disk_devices[ipart_dev]['force_add'] = force_add
 
 
-def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
+def add_bigger_disk_device(
+    ipart_dev: str,
+    ipart_data: dict,
+    disk_devices: dict,
+    force_add: bool = False
+):
     hdf_type = get_hdf_type(ipart_dev)
 
     if not hdf_type:
@@ -782,7 +812,13 @@ def add_bigger_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict)
 
         return
 
-    add_hdf_disk_device(ipart_dev, ipart_data, disk_devices, hdf_type)
+    add_hdf_disk_device(
+        ipart_dev,
+        ipart_data,
+        disk_devices,
+        hdf_type,
+        force_add
+    )
 
 
 def add_iso_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
@@ -793,6 +829,7 @@ def add_iso_disk_device(ipart_dev: str, ipart_data: dict, disk_devices: dict):
     disk_devices[ipart_dev] = ipart_data.copy()
     disk_devices[ipart_dev]['amiga_device_type'] = AMIGA_DISK_DEVICE_TYPE_ISO
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
+    disk_devices[ipart_dev]['force_add'] = False
 
 
 def is_unknown_disk(ipart_data: dict) -> bool:
@@ -800,6 +837,10 @@ def is_unknown_disk(ipart_data: dict) -> bool:
 
 
 def add_disk_devices2(partitions: dict, disk_devices: dict):
+    force_add = is_cmd_shift_pressed()
+
+    clear_pressed_keys()
+
     for ipart_dev, ipart_data in partitions.items():
         if ipart_dev in disk_devices:
             continue
@@ -807,17 +848,31 @@ def add_disk_devices2(partitions: dict, disk_devices: dict):
         unknown = is_unknown_disk(ipart_data)
 
         if ipart_data['is_floppy_drive']:
-            if not unknown:
+            if not unknown and not force_add:
                 continue
 
-            add_adf_disk_device(ipart_dev, ipart_data, disk_devices)
+            add_adf_disk_device(
+                ipart_dev,
+                ipart_data,
+                disk_devices,
+                force_add
+            )
         elif ipart_data['is_disk_drive']:
-            if not unknown:
+            if not unknown and not force_add:
                 continue
 
-            add_bigger_disk_device(ipart_dev, ipart_data, disk_devices)
+            add_bigger_disk_device(
+                ipart_dev,
+                ipart_data,
+                disk_devices,
+                force_add
+            )
         elif ipart_data['is_cdrom_drive']:
-            add_iso_disk_device(ipart_dev, ipart_data, disk_devices)
+            add_iso_disk_device(
+                ipart_dev,
+                ipart_data,
+                disk_devices
+            )
 
 
 def is_adf_header(header: bytes) -> bool:
@@ -918,18 +973,6 @@ def find_new_devices(partitions: dict, old_partitions: dict) -> List[str]:
     return new_devices
 
 
-def is_ctrl_shift_pressed() -> bool:
-    return key_ctrl_pressed and key_shift_pressed
-
-
-def clear_pressed_keys():
-    global key_ctrl_pressed
-    global key_shift_pressed
-
-    key_ctrl_pressed = False
-    key_shift_pressed = False
-
-
 def quick_format_single_device(device: str):
     try:
         with open(device, 'wb') as f:
@@ -950,7 +993,7 @@ def rescan_device(device_basename: str):
 
 
 def format_devices(partitions: dict, old_partitions: dict, loop_counter: int):
-    if not is_ctrl_shift_pressed():
+    if not is_cmd_delete_pressed():
         return
 
     clear_pressed_keys()
@@ -996,23 +1039,49 @@ def format_devices(partitions: dict, old_partitions: dict, loop_counter: int):
         del partitions[ipart_dev]
 
 
-def on_key_press(key):
-    global key_ctrl_pressed
+def is_cmd_delete_pressed() -> bool:
+    return key_cmd_pressed and key_delete_pressed
+
+
+def is_cmd_shift_pressed() -> bool:
+    return key_cmd_pressed and key_shift_pressed
+
+
+def clear_pressed_keys():
+    global key_cmd_pressed
+    global key_delete_pressed
     global key_shift_pressed
 
-    if key == Key.ctrl:
-        key_ctrl_pressed = True
+    key_cmd_pressed = False
+    key_delete_pressed = False
+    key_shift_pressed = False
+
+
+def on_key_press(key):
+    global key_cmd_pressed
+    global key_delete_pressed
+    global key_shift_pressed
+
+    if key == Key.cmd:
+        key_cmd_pressed = True
+
+    if key == Key.delete:
+        key_delete_pressed = True
 
     if key == Key.shift:
         key_shift_pressed = True
 
 
 def on_key_release(key):
-    global key_ctrl_pressed
+    global key_cmd_pressed
+    global key_delete_pressed
     global key_shift_pressed
 
-    if key == Key.ctrl:
-        key_ctrl_pressed = False
+    if key == Key.cmd:
+        key_cmd_pressed = False
+
+    if key == Key.delete:
+        key_delete_pressed = False
 
     if key == Key.shift:
         key_shift_pressed = False
@@ -1208,7 +1277,7 @@ def main():
                     update_disk_devices(partitions, disk_devices)
                     affect_fs_disk_devices(disk_devices)
 
-                if fix_disk_devices(partitions, disk_devices):
+                if remove_known_disk_devices(partitions, disk_devices):
                     affect_fs_disk_devices(disk_devices)
 
                 sync_writes_ts = sync_writes(sync_writes_ts)
