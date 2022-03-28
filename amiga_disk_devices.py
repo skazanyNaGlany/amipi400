@@ -37,7 +37,7 @@ TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 ENABLE_REINIT_HANDLE_AFTER_SECS = 0
-ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
+ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
 DISABLE_SWAP = False
 DEFAULT_READ_A_HEAD_SECTORS = 256
 SYNC_DISKS_SECS = 60 * 3
@@ -57,6 +57,8 @@ ADF_BOOTBLOCK = numpy.dtype([
     ('Rootblock',   numpy.uint32            )
 ])
 SYSTEM_INTERNAL_SD_CARD_NAME = 'mmcblk0'
+PHYSICAL_SECTOR_SIZE = 512
+PHYSICAL_SECTOR_READ_TIME_MS = 25
 MAIN_LOOP_MAX_COUNTER = 0
 
 
@@ -89,6 +91,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._access_times = {}
         self._modification_times = {}
         self._last_write_ts = 0
+        self._dd_processes = {}
 
 
     access = None
@@ -199,12 +202,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return None
 
 
-    def _save_file_access_time(self, device_pathname: str) -> float:
-        current_time = time.time()
+    def _save_file_access_time(self, device_pathname: str, _time: float = None) -> float:
+        if _time is None:
+            _time = time.time()
 
-        self._access_times[device_pathname] = current_time
+        self._access_times[device_pathname] = _time
 
-        return current_time
+        return _time
 
 
     def _save_file_modification_time(self, device_pathname: str) -> float:
@@ -320,6 +324,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data:
             raise FuseOSError(ENOENT)
 
+        old_access_time = self._get_file_access_time(ipart_data['device'])
+
         self._reinit_handle(ipart_data)
         self._save_file_access_time(ipart_data['device'])
 
@@ -329,14 +335,14 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
-            self._save_file_access_time(ipart_data['device'])
+            self._save_file_access_time(ipart_data['device'], old_access_time)
 
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
-            self._save_file_access_time(ipart_data['device'])
+            self._save_file_access_time(ipart_data['device'], old_access_time)
 
             raise FuseOSError(EIO)
 
@@ -346,29 +352,94 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         os.lseek(handle, offset, os.SEEK_SET)
 
+        # print('==============')
+
+        total_read_time_ms = 0
+
         while to_read_size > 0:
             try:
-                self._save_file_access_time(ipart_data['device'])
+                # self._save_file_access_time(ipart_data['device'])
 
-                data = os.read(handle, 512)
+                start_time = time.time()
+
+                data = os.read(handle, PHYSICAL_SECTOR_SIZE)
                 len_data = len(data)
+
+                read_time_ms = int((time.time() - start_time) * 1000)
+                total_read_time_ms += read_time_ms
+
+                if read_time_ms > PHYSICAL_SECTOR_READ_TIME_MS:
+                    # print(read_time_ms)
+                    self._save_file_access_time(ipart_data['device'])
+
+                # print(read_time_ms)
 
                 all_data += data
                 to_read_size -= len_data
 
-                if len_data < 512:
+                if len_data < PHYSICAL_SECTOR_SIZE:
                     break
             except Exception as x:
                 ex = x
 
                 break
 
-        self._save_file_access_time(ipart_data['device'])
+        # print('==============')
+
+        if total_read_time_ms > PHYSICAL_SECTOR_READ_TIME_MS:
+            # print(total_read_time_ms)
+            self._save_file_access_time(ipart_data['device'])
+        else:
+            self._save_file_access_time(ipart_data['device'], old_access_time)
+
+            if size > 0:
+                self._simulate_read(ipart_data, offset, size)
 
         if ex is not None:
             raise ex
 
         return all_data
+
+
+    def _is_dd_running(self, ipart_data: dict) -> bool:
+        device = ipart_data['device']
+
+        if device not in self._dd_processes:
+            return False
+
+        dd_process = self._dd_processes[device]
+
+        if dd_process.poll() is None:
+            return True
+
+        return False
+
+
+    def _simulate_read(self, ipart_data, offset, size):
+        # return
+
+        with self._mutex:
+            if self._is_dd_running(ipart_data):
+                return
+
+            count = 1 if not size else int(size / PHYSICAL_SECTOR_SIZE)
+
+            if not count:
+                count = 1
+
+            # print('simulating read ' + str(time.time()))
+
+            dd_str = 'dd iflag=skip_bytes,direct bs={bs} count={count} skip={skip} if=\"{_if}\" of=\"{of}\"'.format(
+                bs=PHYSICAL_SECTOR_SIZE,
+                count=count,
+                skip=offset,
+                _if=ipart_data['device'],
+                of='/dev/null'
+            )
+
+            # print(dd_str)
+
+            self._dd_processes[ipart_data['device']] = subprocess.Popen(dd_str, shell=True)
 
 
     def truncate(self, path, length, fh=None):
@@ -687,7 +758,7 @@ def get_hdf_type(pathname: str) -> int:
     file_stat = os.stat(pathname)
 
     with open(pathname, 'rb') as file:
-        data = array('B', file.read(512))
+        data = array('B', file.read(PHYSICAL_SECTOR_SIZE))
 
         char_0 = chr(data[0])
         char_1 = chr(data[1])
@@ -904,7 +975,7 @@ def clear_bits(i: int, bits: list) -> int:
 
 def read_file_header(filename: str) -> Optional[bytes]:
     with open(filename, 'rb') as f:
-        return f.read(512)
+        return f.read(PHYSICAL_SECTOR_SIZE)
 
 
 def update_disk_devices(partitions: dict, disk_devices: dict):
@@ -1247,12 +1318,15 @@ def main():
     physical_floppy_drives = OrderedDict()
     physical_cdrom_drives = OrderedDict()
 
+    # subprocess.Popen('dd iflag=skip_bytes,direct bs=512 count=8 skip=0 if="/dev/sda" of="/dev/null"', shell=True)
+    # subprocess.Popen('/bin/dd')
+
     print_app_version()
     check_pre_requirements()
     init_logger()
     unmount_fuse_mountpoint()
     mkdir_fuse_mountpoint()
-    # uncomment this to enable FUSE logging
+    # # uncomment this to enable FUSE logging
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
     init_fuse(disk_devices)
