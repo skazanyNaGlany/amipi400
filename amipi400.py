@@ -57,10 +57,10 @@ ENABLE_F12_OPEN_GUI = True
 # ENABLE_F12_OPEN_GUI = False
 ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
-ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
+ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SET_CACHE_PRESSURE = False
 ENABLE_INTERNAL_DRIVE = True
-ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = True  # ~20 secs faster (can break compatibility in some games)
+ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = False  # ~20 secs faster (can break compatibility in some games)
 ENABLE_TAB_SHELL = True
 ENABLE_KICKSTART_LONG_FILENAME_FIX = True
 ENABLE_COPY_DF_MUTE_SOUNDS = True
@@ -2858,11 +2858,17 @@ def process_amiga_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices:
     attach_amiga_disk_devices(amiga_disk_devices)
 
 
-def set_devices_read_a_head(devices: List[str], partitions: dict):
+def set_devices_read_a_head(devices: List[str], amiga_disk_devices: dict, partitions: dict):
     devices = list(set(devices))
 
     for ipart_dev in devices:
         if ipart_dev not in partitions:
+            continue
+
+        if ipart_dev in amiga_disk_devices:
+            # do not allow to change read-a-head for device
+            # managed by amiga_disk_devices.py
+            # should not get here
             continue
 
         ipart_data = partitions[ipart_dev]
@@ -4299,7 +4305,7 @@ while True:
         process_amiga_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
 
     if new_attached or other_attached:
-        set_devices_read_a_head(new_attached + other_attached, partitions)
+        set_devices_read_a_head(new_attached + other_attached, amiga_disk_devices, partitions)
 
     if unmounted or new_mounted or new_attached or new_detached or other_attached:
         # something changed
