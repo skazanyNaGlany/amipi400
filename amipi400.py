@@ -27,6 +27,7 @@ try:
     from pynput.keyboard import Key, Listener, Controller, KeyCode
     from configparser import ConfigParser, ParsingError
     from array import array
+    from utils import enable_numlock, disable_numlock
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -299,7 +300,6 @@ copy_df_target_index = 0
 copy_df_source_data = None
 copy_df_target_data = None
 is_emulator_paused = False
-numlock_state = False
 copy_hd_step = -1
 copy_hd_source_index = 0
 copy_hd_target_index = 0
@@ -1933,27 +1933,6 @@ def print_physical_floppy_drives():
         print_log('  device: ' + drive_data['device'])
 
         print_log()
-
-
-def set_numlock_state(state: bool):
-    global numlock_state
-
-    if state == numlock_state:
-        return
-
-    os.system('echo {state} | sudo tee /sys/class/leds/input?::numlock/brightness > /dev/null'.format(
-        state = 1 if state else 0
-    ))
-
-    numlock_state = state
-
-
-def enable_numlock():
-    set_numlock_state(True)
-
-
-def disable_numlock():
-    set_numlock_state(False)
 
 
 def init_keyboard_listener():
