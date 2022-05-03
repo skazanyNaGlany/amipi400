@@ -683,3 +683,79 @@ Fix bug when reinserting raw CD ISO is not seen in the WB
 ./amiberry -G -m A1200 -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8    -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow
 ./amiberry -G -m A1200 -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8 --autoload /media/pi/AP4_LHA0/Superfrog_v1.4_0035.lha 
 ./amiberry -G -m A1200 -s bsdsocket_emu=true -s scsi=false -s nr_floppies=4 -s magic_mouse=none  -r "/boot/kickstart.rom"   cd32cd=1  -s cdimage0=",image"   -s cpu_memory_cycle_exact=false  -s fastmem_size=8 --autoload /media/pi/AP4_LHA0/Superfrog_v1.4_0035.lha     -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow
+
+
+hexdump -C /tmp/amiga_disk_devices/__dev__sda.adf
+hexdump -C -s 0 -n 4096 /tmp/amiga_disk_devices/__dev__sda.adf
+hexdump -C -s 12288 -n 4096 /tmp/amiga_disk_devices/__dev__sda.adf
+
+
+
+
+
+locals {'self': <DiskSpinner(Thread-1, started 3035874400)>, 'handle': 5, 'offset': 0, 'chunk_size': 4096, 'max_offset': 901120}
+cached range {0: 4096, 12288: 4096}
+flat [0, 4096, 12288, 4096]
+flat [0, 4096, 12288, 16384]
+sorted_flat [0, 4096, 12288, 16384]
+range None
+Syncing disks
+
+
+
+locals {'self': <DiskSpinner(Thread-1, started 3035776096)>, 'handle': 6, 'offset': 0, 'chunk_size': 4096, 'max_offset': 901120}
+_cached_ranges {0: 4096, 12288: 4096, 4096: 4096, 8192: 4096}
+flat_list [0, 4096, 12288, 4096, 4096, 4096, 8192, 4096]
+flat_list [0, 4096, 12288, 4096, 4096, 4096, 8192, 4096]
+flat_list_ext [0, 4096, 12288, 16384, 4096, 8192, 8192, 12288]
+sorted_flat_list_ext [0, 4096, 4096, 8192, 8192, 12288, 12288, 16384]
+range None
+sorted_flat_list_ext
+
+
+
+
+
+
+
+
+    if ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
+        set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
+    else:
+        set_device_read_a_head_sectors(ipart_dev, 0)
+
+
+
+
+
+
+ls -la --time=atime --full-time /tmp/amiga_disk_devices/
+
+
+
+
+
+
+off 1m8.980s
+on 0m36.042s
+
+
+
+
+131072
+901120
+
+
+
+
+hexdump -v -C /tmp/amiga_disk_devices/__dev__sda.adf
+
+
+
+
+0. disable floppy spinning when game read from 0 sector sequently
+1. format with first bbytes DOS 
+2. re-implement low-level df copy
+3. remove print_log
+4. refactor
+5. refactor format_devices
