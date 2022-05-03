@@ -1,9 +1,9 @@
 import sys
 import os
 
-assert sys.platform == 'linux', "This script must be run only on Linux"
-assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, "This script requires Python 3.5+"
-assert os.geteuid() == 0, "This script must be run as root"
+assert sys.platform == 'linux', 'This script must be run only on Linux'
+assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
+assert os.geteuid() == 0, 'This script must be run as root'
 
 try:
     import psutil
@@ -27,7 +27,7 @@ try:
     from pynput.keyboard import Key, Listener, Controller, KeyCode
     from configparser import ConfigParser, ParsingError
     from array import array
-    from utils import enable_numlock, disable_numlock
+    from utils import enable_numlock, disable_numlock, mute_system_sound, unmute_system_sound
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -37,6 +37,7 @@ APP_UNIXNAME = 'amipi400'
 APP_VERSION = '0.1'
 TMP_PATH_PREFIX = os.path.join(tempfile.gettempdir(), APP_UNIXNAME)
 AMIGA_DISK_DEVICES_MOUNTPOINT = os.path.join(tempfile.gettempdir(), 'amiga_disk_devices')
+AMIGA_DISK_DEVICES_STATUS_LOG = os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, 'status.log')
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
 KICKSTART_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart.rom')
 KICKSTART_EXTENDED_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart_ext.rom')
@@ -95,6 +96,7 @@ EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s amiberry.gfx_corr
 CONFIG_INI_NAME = '.amipi400.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
+# AUTORUN_EMULATOR = False
 AUTOSEND_SIGNAL = True
 MONITOR_STATE_ON = 1
 MONITOR_STATE_KEEP_OFF = 0
@@ -283,7 +285,6 @@ sync_process = None
 physical_floppy_drives = OrderedDict()
 amiberry_current_sound_mode = ''
 sound_output_state = 'exact'
-last_system_sound_mute_state = 'unmute'
 failing_devices_ignore = []
 keyboard_listener = None
 keyboard_controller = None
@@ -703,7 +704,7 @@ def soft_reset_emulator():
     if soft_resetting:
         return
 
-    clear_system_cache()
+    # clear_system_cache()
     put_command('uae_reset 1,1')
 
     soft_resetting = True
@@ -1716,41 +1717,6 @@ def is_copying_data() -> bool:
     return copy_df_step != -1 or copy_hd_step != -1
 
 
-def is_sync_running() -> bool:
-    global sync_process
-
-    if not sync_process:
-        return False
-
-    if sync_process.poll() is None:
-        return True
-
-    sync_process = None
-
-    return False
-
-
-def sync():
-    global sync_disks_ts
-    global sync_process
-
-    if is_sync_running():
-        return
-
-    current_ts = int(time.time())
-
-    if not sync_disks_ts:
-        sync_disks_ts = current_ts
-
-    if current_ts - sync_disks_ts < SYNC_DISKS_SECS:
-        return
-
-    print_log('Syncing disks')
-
-    sync_process = subprocess.Popen('sync')
-    sync_disks_ts = current_ts
-
-
 def get_partitions2() -> OrderedDict:
     lsblk_buf = StringIO()
     pattern = r'NAME="(\w*)" SIZE="(\d{0,}.\d{0,}[G|M|K])" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)"'
@@ -1974,34 +1940,10 @@ def set_sound_output_state(state: str):
     if sound_output_state == state:
         return
 
-    # if state == 'interrupts':
-    #     turn_numlock_off()
-    # elif state == 'exact':
-    #     turn_numlock_on()
-
     put_command('cfgfile_parse_line_type_all sound_output=' + state)
     put_command('config_changed 1')
 
     sound_output_state = state
-
-
-def mute_system_sound():
-    set_system_sound_mute_state('mute')
-
-
-def unmute_system_sound():
-    set_system_sound_mute_state('unmute')
-
-
-def set_system_sound_mute_state(state: str):
-    global last_system_sound_mute_state
-
-    if last_system_sound_mute_state == state:
-        return
-
-    last_system_sound_mute_state = state
-
-    os.system('amixer set Master ' + state)
 
 
 def disable_emulator_sound():
@@ -2012,17 +1954,24 @@ def enable_emulator_sound():
     set_sound_output_state('exact')
 
 
-def is_caching_physical_floppy2(additional_seconds: int) -> bool:
+def is_caching_physical_floppy2(additional_seconds: int, include_add = False) -> bool:
     current_time = time.time()
 
     for drive_index, floppy_data in enumerate(floppies):
         if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
             continue
 
+        if floppy_data['using_amiga_disk_devices'] and not include_add:
+            continue
+
         if not floppy_data['diskstats_change_ts']:
             continue
 
         if current_time - floppy_data['diskstats_change_ts'] <= additional_seconds:
+            if floppy_data['using_amiga_disk_devices'] and include_add:
+                if floppy_data['add_status_fully_cached']:
+                    continue
+
             return True
 
     return False
@@ -2052,7 +2001,6 @@ def refresh_floppies_times() -> False:
 
 def is_accessing_physical_floppy3():
     current_time = time.time()
-    last_floppy_access_time_mode_0 = 0
     last_floppy_access_time_mode_1 = 0
 
     for drive_index, floppy_data in enumerate(floppies):
@@ -2060,24 +2008,13 @@ def is_accessing_physical_floppy3():
             continue
 
         if floppy_data['using_amiga_disk_devices']:
-            if not floppy_data['atime']:
-                continue
+            continue
 
-            if floppy_data['atime'] != floppy_data['prev_atime']:
-                return True
+        if not floppy_data['diskstats_change_ts']:
+            continue
 
-            if floppy_data['atime'] > last_floppy_access_time_mode_0:
-                last_floppy_access_time_mode_0 = floppy_data['atime']
-        else:
-            if not floppy_data['diskstats_change_ts']:
-                continue
-
-            if floppy_data['diskstats_change_ts'] > last_floppy_access_time_mode_1:
-                last_floppy_access_time_mode_1 = floppy_data['diskstats_change_ts']
-
-    if last_floppy_access_time_mode_0:
-        if current_time - last_floppy_access_time_mode_0 <= 2:     # 3 better ?
-            return True
+        if floppy_data['diskstats_change_ts'] > last_floppy_access_time_mode_1:
+            last_floppy_access_time_mode_1 = floppy_data['diskstats_change_ts']
 
     if last_floppy_access_time_mode_1:
         if current_time - last_floppy_access_time_mode_1 <= 4:     # 3 better ?
@@ -2154,12 +2091,66 @@ def refresh_floppies_diskstats():
     return True
 
 
+def get_add_status():
+    if not os.path.exists(AMIGA_DISK_DEVICES_STATUS_LOG):
+        return {}
+
+    status = {}
+
+    with open(AMIGA_DISK_DEVICES_STATUS_LOG, 'r') as file:
+        lines = file.read().splitlines()
+
+        for iline in lines:
+            iline = iline.strip()
+
+            if not iline:
+                continue
+
+            parts = iline.split(',', 2)
+            _map = {}
+
+            for iitem in parts:
+                iitem_parts = iitem.strip().split(':', 1)
+
+                _key = iitem_parts[0]
+                _value = iitem_parts[1]
+
+                if _key == 'fully_cached':
+                    _value = bool(int(_value))
+
+                _map[_key] = _value
+
+            status[_map['device']] = _map
+
+    return status
+
+
+def refresh_floppies_add_status():
+    global floppies
+
+    status = get_add_status()
+
+    for drive_index, floppy_data in enumerate(floppies):
+        if not floppy_data or not floppy_data['using_amiga_disk_devices']:
+            continue
+
+        device = floppy_data['device']
+
+        if device not in status:
+            continue
+
+        floppy_data['add_status_fully_cached'] = status[device]['fully_cached']
+
+
 def is_writing_physical_floppy() -> bool:
     current_time = time.time()
     last_floppy_write_time = 0
 
     for drive_index, floppy_data in enumerate(floppies):
         if not floppy_data or not floppy_data['medium']['is_floppy_drive']:
+            continue
+
+        if floppy_data['using_amiga_disk_devices']:
             continue
 
         if not floppy_data['mtime']:
@@ -2194,7 +2185,7 @@ def affect_floppy_speed():
     if not ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK:
         return
 
-    is_caching = is_caching_physical_floppy2(1)
+    is_caching = is_caching_physical_floppy2(1, True)
 
     if is_caching:
         # turbo
@@ -3295,7 +3286,8 @@ def attach_mountpoint_floppy(
             'diskstats': '',
             'prev_diskstats': '',
             'diskstats_change_ts': 0,
-            'using_amiga_disk_devices': using_amiga_disk_devices
+            'using_amiga_disk_devices': using_amiga_disk_devices,
+            'add_status_fully_cached': False
         }
 
         put_command('cfgfile_parse_line_type_all floppy{index}={pathname}'.format(
@@ -4303,6 +4295,7 @@ while True:
 
     refresh_floppies_times()
     refresh_floppies_diskstats()
+    refresh_floppies_add_status()
 
     affect_floppy_speed()
     affect_paula_volume2()
@@ -4323,7 +4316,6 @@ while True:
     audio_lag_fix()
     copy_df()
     copy_hd()
-    sync()
 
     time.sleep(100 / 1000)
     time.sleep(0)
