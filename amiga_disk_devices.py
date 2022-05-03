@@ -1,6 +1,8 @@
-from errno import EINVAL, EIO, ENOSPC, EROFS
+from errno import EIO, ENOSPC, EROFS
+
 import sys
 import os
+import subprocess
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
@@ -15,8 +17,7 @@ try:
     import logzero
     import numpy
     import threading
-    import time
-    import logging
+    import threading
 
     from collections import OrderedDict
     from io import StringIO
@@ -26,6 +27,7 @@ try:
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
     from array import array
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -38,8 +40,9 @@ LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amiga_disk_devices.log')
 ENABLE_LOGGER = False
 ENABLE_REINIT_HANDLE_AFTER_SECS = 0
 ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
+ENABLE_SET_CACHE_PRESSURE = False
 DISABLE_SWAP = False
-DEFAULT_READ_A_HEAD_SECTORS = 256
+DEFAULT_READ_A_HEAD_SECTORS = 24      # 256 system default, 44 seems ok, 24 seems best
 SYNC_DISKS_SECS = 60 * 3
 AMIGA_DISK_DEVICE_TYPE_ADF = 1
 AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB = 8
@@ -58,7 +61,9 @@ ADF_BOOTBLOCK = numpy.dtype([
 ])
 SYSTEM_INTERNAL_SD_CARD_NAME = 'mmcblk0'
 PHYSICAL_SECTOR_SIZE = 512
-PHYSICAL_SECTOR_READ_TIME_MS = 25
+PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS = 100
+STATUS_FILE_NAME = 'status.log'
+CACHE_DATA_BETWEEN_SECS = 3
 MAIN_LOOP_MAX_COUNTER = 0
 
 
@@ -66,6 +71,115 @@ fs_instance = None
 key_cmd_pressed = False
 key_delete_pressed = False
 key_shift_pressed = False
+os_read_write_mutex = threading.Lock()
+devices_read_a_head_sectors = {}
+
+
+def os_read(handle, offset, size):
+    with os_read_write_mutex:
+        os.lseek(handle, offset, os.SEEK_SET)
+
+        return os.read(handle, size)
+
+
+def os_write(handle, offset, data):
+    with os_read_write_mutex:
+        os.lseek(handle, offset, os.SEEK_SET)
+
+        return os.write(handle, data)
+
+
+class DiskSpinner(threading.Thread):
+    def __init__(self):
+        self._running = False
+        self._pathname_spinnings = {}
+        self._handle_spinnings = {}
+        self._cached_ranges = {}
+        self._cached_ranges2 = {}
+
+        threading.Thread.__init__(self)
+
+
+    def _is_dd_running(self, dd_process) -> bool:
+        if dd_process.poll() is None:
+            return True
+
+        return False
+
+
+    def _run_dd(self, device: str, offset, size):
+        if size <= 0:
+            return None
+
+        count_sectors = int(size / PHYSICAL_SECTOR_SIZE)
+
+        if count_sectors <= 0:
+            return None
+
+        dd_str = 'dd iflag=skip_bytes,direct bs={bs} count={count} skip={skip} if=\"{_if}\" of=\"{of}\" status=none'.format(
+            bs=PHYSICAL_SECTOR_SIZE,
+            count=count_sectors,
+            skip=offset,
+            _if=device,
+            of='/dev/null'
+        )
+
+        return subprocess.Popen(dd_str, shell=True)
+
+
+    def _process_spinnings_by_pathname(self):
+        for device in self._pathname_spinnings:
+            if self._pathname_spinnings[device]['dd_process']:
+                if not self._is_dd_running(self._pathname_spinnings[device]['dd_process']):
+                    self._pathname_spinnings[device]['dd_process'] = None
+
+            if not self._pathname_spinnings[device]['enable']:
+                continue
+
+            self._pathname_spinnings[device]['enable'] = False
+            self._pathname_spinnings[device]['dd_process'] = self._run_dd(
+                device,
+                self._pathname_spinnings[device]['offset'],
+                self._pathname_spinnings[device]['size']
+            )
+
+
+    def run(self):
+        while self._running:
+            self._process_spinnings_by_pathname()
+
+            time.sleep(100 / 1000)
+            time.sleep(0)
+
+
+    def set_spinning_by_pathname(self, pathname: str, enable: bool, offset, size):
+        if pathname in self._pathname_spinnings:
+            if self._pathname_spinnings[pathname]['dd_process']:
+                return
+
+        if pathname not in self._pathname_spinnings:
+            self._pathname_spinnings[pathname] = {
+                'by_pathname': True,
+                'enable': False,
+                'offset': 0,
+                'size': 0,
+                'dd_process': None
+            }
+
+        self._pathname_spinnings[pathname]['enable'] = enable
+        self._pathname_spinnings[pathname]['offset'] = offset
+        self._pathname_spinnings[pathname]['size'] = size
+        self._pathname_spinnings[pathname]['dd_process'] = None
+
+
+    def start(self):
+        self._running = True
+
+        return super().start()
+
+
+    def stop(self):
+        self._running = False
 
 
 class AmigaDiskDevicesFS(LoggingMixIn, Operations):
@@ -73,7 +187,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     _access_times: Dict[str, float]
     _modification_times: Dict[str, float]
 
-    def __init__(self, disk_devices: dict):
+    def __init__(self, disk_devices: dict, disk_spinner: DiskSpinner):
         self._instance_time = time.time()
         self._disk_devices = disk_devices
         self._static_files = {
@@ -84,6 +198,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 st_atime=self._instance_time,
                 st_nlink=2,
                 st_size=4096
+            ),
+            '/' + STATUS_FILE_NAME: dict(
+                st_mode=(S_IFREG | 0o444),
+                st_ctime=self._instance_time,
+                st_mtime=self._instance_time,
+                st_atime=self._instance_time,
+                st_nlink=1
             )
         }
         self._handles = {}
@@ -91,7 +212,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._access_times = {}
         self._modification_times = {}
         self._last_write_ts = 0
-        self._dd_processes = {}
+        self._disk_spinner = disk_spinner
+        self._status_log_content = None
 
 
     access = None
@@ -105,23 +227,20 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     statfs = None
 
 
-    def get_last_write_ts(self):
-        return self._last_write_ts
+    def _add_defaults(self, ipart_data):
+        if 'fully_cached' not in ipart_data:
+            ipart_data['fully_cached'] = False
 
-
-    def clear_last_write_ts(self):
-        self._last_write_ts = 0
-
-
-    def sync_handles(self):
-        for device_pathname in list(self._handles.keys()):
-            handle = self._handles[device_pathname]
-
-            os.fsync(handle)
+        if 'last_caching_ts' not in ipart_data:
+            ipart_data['last_caching_ts'] = 0
 
 
     def set_disk_devices(self, disk_devices: dict):
+        for ipart_dev, ipart_data in disk_devices.items():
+            self._add_defaults(ipart_data)
+
         self._disk_devices = disk_devices
+        self._status_log_content = None
 
         self._flush_handles()
 
@@ -133,11 +252,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def _close_handles(self):
-        for device_pathname in self._handles.keys():
+        for device_pathname in list(self._handles.keys()):
             self._close_handle(device_pathname)
 
 
     def _close_handle(self, device_pathname: str):
+        handle = None
+
         with self._mutex:
             try:
                 handle = self._handles[device_pathname]
@@ -161,6 +282,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             except:
                 pass
 
+        return handle
+
 
     def _open_handle(self, ipart_data: dict) -> Optional[int]:
         with self._mutex:
@@ -169,10 +292,12 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             if device_pathname in self._handles:
                 return self._handles[device_pathname]
 
+            self._set_fully_cached(ipart_data, False)
+
             is_readable = ipart_data['is_readable']
             is_writable = ipart_data['is_writable']
 
-            mode = os.O_SYNC | os.O_DSYNC | os.O_RSYNC
+            mode = os.O_SYNC | os.O_RSYNC
 
             if is_readable and is_writable:
                 mode |= os.O_RDWR
@@ -183,13 +308,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 self._handles[device_pathname] = os.open(device_pathname, mode)
             except:
                 return None
-
-            os.posix_fadvise(
-                self._handles[device_pathname],
-                0,
-                ipart_data['size'] - 1,
-                os.POSIX_FADV_DONTNEED
-            )
 
             return self._handles[device_pathname]
 
@@ -301,33 +419,213 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 )
 
 
-    def _reinit_handle(self, ipart_data):
-        if not ENABLE_REINIT_HANDLE_AFTER_SECS:
-            return
+    def _partial_read(
+        self,
+        handle,
+        offset,
+        size,
+        max_read_size = None,
+        min_total_read_time_ms = None,
+        pre_read_callback = None,
+        post_read_callback = None,
+        callback_user_data = None
+    ):
+        ex = None
+        to_read_size = size
+        all_data = bytes()
+        dynamic_offset = offset
+        read_time_ms = 0
+        total_read_time_ms = 0
+        count_real_read_sectors = 0
+        total_len_data = 0
 
-        if ipart_data['amiga_device_type'] != AMIGA_DISK_DEVICE_TYPE_ADF:
-            return
+        while True:
+            try:
+                if pre_read_callback:
+                    pre_read_callback(
+                        read_time_ms,
+                        total_read_time_ms,
+                        callback_user_data
+                    )
 
+                start_time = time.time()
+
+                data = os_read(handle, dynamic_offset, PHYSICAL_SECTOR_SIZE)
+                len_data = len(data)
+                dynamic_offset += len_data
+                total_len_data += len_data
+
+                read_time_ms = int((time.time() - start_time) * 1000)
+                total_read_time_ms += read_time_ms
+
+                if post_read_callback:
+                    post_read_callback(
+                        read_time_ms,
+                        total_read_time_ms,
+                        callback_user_data
+                    )
+
+                if read_time_ms > PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS:
+                    count_real_read_sectors += 1
+
+                all_data += data
+                to_read_size -= len_data
+
+                if len_data < PHYSICAL_SECTOR_SIZE:
+                    break
+
+                if max_read_size is not None:
+                    if total_len_data >= max_read_size:
+                        break
+
+                if to_read_size <= 0:
+                    if min_total_read_time_ms is not None:
+                        if total_read_time_ms < min_total_read_time_ms:
+                            continue
+
+                    break
+            except Exception as x:
+                ex = x
+
+                break
+
+        all_data = all_data[:size]
+
+        return {
+            'all_data': all_data,
+            'ex': ex,
+            'total_read_time_ms': total_read_time_ms,
+            'count_real_read_sectors': count_real_read_sectors
+        }
+
+
+    def _set_fully_cached(self, ipart_data, fully_cached_status):
+        if ipart_data['fully_cached'] != fully_cached_status:
+            ipart_data['fully_cached'] = fully_cached_status
+
+            self._status_log_content = None
+
+
+    def _pre_read_callback(self, read_time_ms, total_read_time_ms, callback_user_data):
+        ipart_data = callback_user_data
+
+        if not ipart_data['fully_cached']:
+            mute_system_sound(4)
+
+        self._save_file_access_time(ipart_data['device'])
+
+
+    def _floppy_read(self, handle, offset, size, ipart_data):
         current_time = time.time()
-        access_time = self._get_file_access_time(ipart_data['device'])
 
-        if current_time - access_time >= ENABLE_REINIT_HANDLE_AFTER_SECS:
-            self._close_handle(ipart_data['device'])
+        if not ipart_data['last_caching_ts']:
+            ipart_data['last_caching_ts'] = current_time
+
+        if not ipart_data['fully_cached']:
+            mute_system_sound(4)
+
+        read_result = self._partial_read(
+            handle,
+            offset,
+            size,
+            None,
+            None,
+            self._pre_read_callback,
+            None,
+            ipart_data
+        )
+
+        if read_result['total_read_time_ms'] > PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS:
+            self._set_fully_cached(ipart_data, False)
+
+        # set_numlock_state(ipart_data['fully_cached'])
+
+        if ipart_data['fully_cached']:
+            self._disk_spinner.set_spinning_by_pathname(
+                ipart_data['device'],
+                True,
+                offset,
+                PHYSICAL_SECTOR_SIZE
+            )
+
+            if read_result['ex'] is not None:
+                raise read_result['ex']
+
+            return read_result['all_data']
+
+        if read_result['total_read_time_ms'] < PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS \
+            and not ipart_data['fully_cached']:
+
+            if not ipart_data['fully_cached']:
+                if current_time - ipart_data['last_caching_ts'] >= CACHE_DATA_BETWEEN_SECS:
+                    read_result2 = self._partial_read(
+                        handle,
+                        0,
+                        PHYSICAL_SECTOR_SIZE,
+                        FLOPPY_ADF_SIZE,
+                        PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS,
+                        self._pre_read_callback,
+                        None,
+                        ipart_data
+                    )
+
+                    ipart_data['last_caching_ts'] = current_time
+
+                    if read_result2['total_read_time_ms'] < PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS:
+                        self._set_fully_cached(ipart_data, True)
+
+        self._save_file_access_time(ipart_data['device'])
+
+        if read_result['ex'] is not None:
+            raise read_result['ex']
+
+        return read_result['all_data']
+
+
+    def _generate_status_log(self):
+        if self._status_log_content:
+            return self._status_log_content
+
+        content = ''
+
+        for ipart_dev, ipart_data in self._disk_devices.items():
+            content += 'device:' + ipart_dev + ', '
+            content += 'public_name:' + ipart_data['public_name'] + ', '
+            content += 'fully_cached:' + str(int(ipart_data['fully_cached']))
+            content += '\n'
+
+        self._status_log_content = content
+
+        return content
+
+
+    def _status_log_read(self, offset, size):
+        content = self._generate_status_log()
+
+        return bytes(
+            content[offset : offset + size],
+            'utf-8'
+        )
+
+
+    def _generic_read(self, handle, offset, size, device):
+        self._save_file_access_time(device)
+
+        return os_read(handle, offset, size)
 
 
     def read(self, path, size, offset, fh):
         self._flush_handles()
 
         name = self._clear_pathname(path)
+
+        if name == STATUS_FILE_NAME:
+            return self._status_log_read(offset, size)
+
         ipart_data = self._find_file(name)
 
         if not ipart_data:
             raise FuseOSError(ENOENT)
-
-        old_access_time = self._get_file_access_time(ipart_data['device'])
-
-        self._reinit_handle(ipart_data)
-        self._save_file_access_time(ipart_data['device'])
 
         file_size = ipart_data['size']
 
@@ -335,111 +633,31 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             size = file_size - offset
 
         if offset >= file_size or size <= 0:
-            self._save_file_access_time(ipart_data['device'], old_access_time)
+            self._save_file_access_time(ipart_data['device'])
 
             return b''
 
         handle = self._open_handle(ipart_data)
 
         if handle is None:
-            self._save_file_access_time(ipart_data['device'], old_access_time)
+            self._save_file_access_time(ipart_data['device'])
 
             raise FuseOSError(EIO)
 
-        ex = None
-        to_read_size = size
-        all_data = bytes()
-
-        os.lseek(handle, offset, os.SEEK_SET)
-
-        # print('==============')
-
-        total_read_time_ms = 0
-
-        while to_read_size > 0:
-            try:
-                # self._save_file_access_time(ipart_data['device'])
-
-                start_time = time.time()
-
-                data = os.read(handle, PHYSICAL_SECTOR_SIZE)
-                len_data = len(data)
-
-                read_time_ms = int((time.time() - start_time) * 1000)
-                total_read_time_ms += read_time_ms
-
-                if read_time_ms > PHYSICAL_SECTOR_READ_TIME_MS:
-                    # print(read_time_ms)
-                    self._save_file_access_time(ipart_data['device'])
-
-                # print(read_time_ms)
-
-                all_data += data
-                to_read_size -= len_data
-
-                if len_data < PHYSICAL_SECTOR_SIZE:
-                    break
-            except Exception as x:
-                ex = x
-
-                break
-
-        # print('==============')
-
-        if total_read_time_ms > PHYSICAL_SECTOR_READ_TIME_MS:
-            # print(total_read_time_ms)
-            self._save_file_access_time(ipart_data['device'])
-        else:
-            self._save_file_access_time(ipart_data['device'], old_access_time)
-
-            if size > 0:
-                self._simulate_read(ipart_data, offset, size)
-
-        if ex is not None:
-            raise ex
-
-        return all_data
-
-
-    def _is_dd_running(self, ipart_data: dict) -> bool:
-        device = ipart_data['device']
-
-        if device not in self._dd_processes:
-            return False
-
-        dd_process = self._dd_processes[device]
-
-        if dd_process.poll() is None:
-            return True
-
-        return False
-
-
-    def _simulate_read(self, ipart_data, offset, size):
-        # return
-
-        with self._mutex:
-            if self._is_dd_running(ipart_data):
-                return
-
-            count = 1 if not size else int(size / PHYSICAL_SECTOR_SIZE)
-
-            if not count:
-                count = 1
-
-            # print('simulating read ' + str(time.time()))
-
-            dd_str = 'dd iflag=skip_bytes,direct bs={bs} count={count} skip={skip} if=\"{_if}\" of=\"{of}\"'.format(
-                bs=PHYSICAL_SECTOR_SIZE,
-                count=count,
-                skip=offset,
-                _if=ipart_data['device'],
-                of='/dev/null'
+        if ipart_data['is_floppy_drive']:
+            return self._floppy_read(
+                handle,
+                offset,
+                size,
+                ipart_data
             )
 
-            # print(dd_str)
-
-            self._dd_processes[ipart_data['device']] = subprocess.Popen(dd_str, shell=True)
+        return self._generic_read(
+            handle,
+            offset,
+            size,
+            ipart_data['device']
+        )
 
 
     def truncate(self, path, length, fh=None):
@@ -459,6 +677,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if not ipart_data['is_writable']:
             raise FuseOSError(EROFS)
 
+        self._set_fully_cached(ipart_data, False)
         self._save_file_modification_time(ipart_data['device'])
 
         max_file_size = ipart_data['size']
@@ -481,12 +700,18 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
             raise FuseOSError(EIO)
 
-        os.lseek(handle, offset, os.SEEK_SET)
+        if ipart_data['is_floppy_drive']:
+            mute_system_sound(4)
 
         ex = None
 
         try:
-            result = os.write(handle, data)
+            result = os_write(handle, offset, data)
+
+            self._save_file_modification_time(ipart_data['device'])
+
+            if ipart_data['is_floppy_drive']:
+                mute_system_sound(4)
         except Exception as x:
             ex = x
 
@@ -503,7 +728,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         entries = [
             '.',
-            '..'
+            '..',
+            STATUS_FILE_NAME
         ]
 
         if path != '/':
@@ -565,6 +791,9 @@ def disable_swap():
 
 
 def set_cache_pressure():
+    if not ENABLE_SET_CACHE_PRESSURE:
+        return
+
     print_log('Set cache pressure')
     os.system('sysctl -q vm.vfs_cache_pressure=200')
 
@@ -585,38 +814,6 @@ def check_system_binaries():
         if not sh.which(ibin):
             print_log(ibin + ': command not found')
             sys.exit(1)
-
-
-def is_sync_running(sync_process) -> bool:
-    if not sync_process:
-        return False
-
-    if sync_process.poll() is None:
-        return True
-
-    sync_process = None
-
-    return False
-
-
-def sync(sync_disks_ts: int, sync_process):
-    if is_sync_running(sync_process):
-        return sync_disks_ts, sync_process
-
-    current_ts = int(time.time())
-
-    if not sync_disks_ts:
-        sync_disks_ts = current_ts
-
-    if current_ts - sync_disks_ts < SYNC_DISKS_SECS:
-        return sync_disks_ts, sync_process
-
-    print_log('Syncing disks')
-
-    sync_process = subprocess.Popen('sync')
-    sync_disks_ts = current_ts
-
-    return sync_disks_ts, sync_process
 
 
 def is_device_physical_floppy(
@@ -922,6 +1119,7 @@ def add_disk_devices2(partitions: dict, disk_devices: dict):
             if not unknown and not force_add:
                 continue
 
+            mute_system_sound(6)
             add_adf_disk_device(
                 ipart_dev,
                 ipart_data,
@@ -983,10 +1181,10 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
     add_disk_devices2(partitions, disk_devices)
 
 
-def run_fuse(disk_devices: dict):
+def run_fuse(disk_devices: dict, disk_spinner: DiskSpinner):
     global fs_instance
 
-    fs_instance = AmigaDiskDevicesFS(disk_devices)
+    fs_instance = AmigaDiskDevicesFS(disk_devices, disk_spinner)
 
     FUSE(
         fs_instance,
@@ -997,10 +1195,10 @@ def run_fuse(disk_devices: dict):
     )
 
 
-def init_fuse(disk_devices: dict):
+def init_fuse(disk_devices: dict, disk_spinner: DiskSpinner):
     print_log('Init FUSE')
 
-    fuse_instance_thread = threading.Thread(target=run_fuse, args=(disk_devices,))
+    fuse_instance_thread = threading.Thread(target=run_fuse, args=(disk_devices, disk_spinner,))
     fuse_instance_thread.start()
 
     return fuse_instance_thread
@@ -1028,6 +1226,16 @@ def affect_fs_disk_devices(disk_devices: dict):
 
 
 def set_device_read_a_head_sectors(device: str, sectors: int):
+    global devices_read_a_head_sectors
+
+    if device not in devices_read_a_head_sectors:
+        devices_read_a_head_sectors[device] = None
+
+    if devices_read_a_head_sectors[device] == sectors:
+        return
+
+    devices_read_a_head_sectors[device] = sectors
+
     os.system('blockdev --setra {sectors} {device}'.format(
         sectors=sectors,
         device=device
@@ -1045,9 +1253,16 @@ def find_new_devices(partitions: dict, old_partitions: dict) -> List[str]:
 
 
 def quick_format_single_device(device: str):
+    # blank_adf = bytearray(1024)
+
+    # blank_adf[0] = ord('D')
+    # blank_adf[1] = ord('O')
+    # blank_adf[2] = ord('S')
+
     try:
         with open(device, 'wb') as f:
             f.write(bytes(1024))
+            # f.write(blank_adf)
             f.flush()
     except OSError as ex:
         print_log(str(ex))
@@ -1166,30 +1381,13 @@ def init_keyboard_listener():
     keyboard_listener.start()
 
 
-def sync_writes(sync_writes_ts):
-    global fs_instance
+def init_disk_spinner():
+    print_log('Init DiskSpinner')
 
-    current_ts = time.time()
+    disk_spinner = DiskSpinner()
+    disk_spinner.start()
 
-    if not sync_writes_ts:
-        sync_writes_ts = current_ts
-
-    if current_ts - sync_writes_ts < 1:
-        return sync_writes_ts
-
-    sync_writes_ts = current_ts
-    last_write_ts = fs_instance.get_last_write_ts()
-
-    if not last_write_ts:
-        return sync_writes_ts
-
-    if current_ts - last_write_ts < 1:
-        return sync_writes_ts
-
-    fs_instance.clear_last_write_ts()
-    fs_instance.sync_handles()
-
-    return sync_writes_ts
+    return disk_spinner
 
 
 def find_physical_cdrom_drives():
@@ -1310,16 +1508,10 @@ def print_physical_floppy_drives(physical_floppy_drives):
 def main():
     partitions = None
     old_partitions = None
-    sync_disks_ts = 0
-    sync_process = None
     disk_devices = {}
     loop_counter = 0
-    sync_writes_ts = 0
     physical_floppy_drives = OrderedDict()
     physical_cdrom_drives = OrderedDict()
-
-    # subprocess.Popen('dd iflag=skip_bytes,direct bs=512 count=8 skip=0 if="/dev/sda" of="/dev/null"', shell=True)
-    # subprocess.Popen('/bin/dd')
 
     print_app_version()
     check_pre_requirements()
@@ -1329,7 +1521,8 @@ def main():
     # # uncomment this to enable FUSE logging
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
-    init_fuse(disk_devices)
+    disk_spinner = init_disk_spinner()
+    init_fuse(disk_devices, disk_spinner)
     update_physical_floppy_drives(physical_floppy_drives)
     print_physical_floppy_drives(physical_floppy_drives)
     update_physical_cdrom_drives(physical_cdrom_drives)
@@ -1354,18 +1547,19 @@ def main():
                 if remove_known_disk_devices(partitions, disk_devices):
                     affect_fs_disk_devices(disk_devices)
 
-                sync_writes_ts = sync_writes(sync_writes_ts)
-
                 old_partitions = partitions
-                sync_disks_ts, sync_process = sync(sync_disks_ts, sync_process)
                 loop_counter += 1
+
+            unmute_system_sound()
 
             time.sleep(100 / 1000)
             time.sleep(0)
     except KeyboardInterrupt as ex:
         print_log('KeyboardInterrupt')
 
+    unmute_system_sound()
     unmount_fuse_mountpoint()
+    disk_spinner.stop()
 
     sys.exit()
 
