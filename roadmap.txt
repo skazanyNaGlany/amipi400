@@ -759,3 +759,5 @@ hexdump -v -C /tmp/amiga_disk_devices/__dev__sda.adf
 3. remove print_log
 4. refactor
 5. refactor format_devices
+6. remove disable_emulator_sound and enable_emulator_sound
+7. implement raw reading from CD using something like "readsectors"
