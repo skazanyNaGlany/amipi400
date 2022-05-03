@@ -27,10 +27,10 @@ index c07bbb7d..907668c9 100644
          src/osdep/retroarch.cpp
          src/sounddep/sound.cpp
 diff --git a/Makefile b/Makefile
-index 3d159313..58751e85 100644
+index 29969690..2b36206a 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -549,7 +549,10 @@ OBJS = \
+@@ -550,7 +550,10 @@ OBJS = \
  	src/osdep/gui/PanelPrio.o \
  	src/osdep/gui/PanelSavestate.o \
  	src/osdep/gui/main_window.o \
@@ -44,10 +44,10 @@ index 3d159313..58751e85 100644
  OBJS += src/osdep/gui/androidsdl_event.o \
 diff --git a/src/amipi400/consts.h b/src/amipi400/consts.h
 new file mode 100644
-index 00000000..fc52965c
+index 00000000..19143150
 --- /dev/null
 +++ b/src/amipi400/consts.h
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,10 @@
 +#ifndef AMIPI400_CONSTS_H_
 +#define AMIPI400_CONSTS_H_
 +
@@ -55,6 +55,7 @@ index 00000000..fc52965c
 +#define APP_NAME "AMIPI400"
 +#define APP_VERSION "0.1"
 +#define LINE_BUFFER_LEN 255
++#define CRC32_MAX_SIZE 4096
 +
 +#endif  // AMIPI400_CONSTS_H_
 diff --git a/src/amipi400/externals.h b/src/amipi400/externals.h
@@ -443,10 +444,10 @@ index 00000000..e6c46c26
 +
 +#endif  // AMIPI400_UTILS_H_
 diff --git a/src/cfgfile.cpp b/src/cfgfile.cpp
-index bb0f9008..f61c438b 100644
+index 4bec35ff..eba76506 100644
 --- a/src/cfgfile.cpp
 +++ b/src/cfgfile.cpp
-@@ -3607,12 +3607,20 @@ static int cfgfile_parse_host(struct uae_prefs* p, TCHAR* option, TCHAR* value)
+@@ -3657,12 +3657,20 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
  		return 1;
  	}
  
@@ -474,10 +475,10 @@ index bb0f9008..f61c438b 100644
  
  #ifdef GFXFILTER
 diff --git a/src/inputdevice.cpp b/src/inputdevice.cpp
-index ba2d279d..35854dbc 100644
+index ca5b5618..ff2de983 100644
 --- a/src/inputdevice.cpp
 +++ b/src/inputdevice.cpp
-@@ -4471,7 +4471,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
+@@ -4473,7 +4473,8 @@ static bool inputdevice_handle_inputcode2(int monid, int code, int state, const
  	//	NMI_delayed();
  		break;
  	case AKS_PAUSE:
@@ -488,7 +489,7 @@ index ba2d279d..35854dbc 100644
  	case AKS_SINGLESTEP:
  		if (pause_emulation)
 diff --git a/src/osdep/amiberry.cpp b/src/osdep/amiberry.cpp
-index 5e29411d..7d4cf366 100644
+index ff7c2432..1b5d12a0 100644
 --- a/src/osdep/amiberry.cpp
 +++ b/src/osdep/amiberry.cpp
 @@ -81,6 +81,8 @@ int log_scsi;
@@ -547,7 +548,7 @@ index 5e29411d..7d4cf366 100644
  	mon_cursorclipped = 0;
  }
  
-@@ -3344,6 +3363,9 @@ int main(int argc, char* argv[])
+@@ -3307,6 +3326,9 @@ int main(int argc, char* argv[])
  		abort();
  	}
  
@@ -558,16 +559,29 @@ index 5e29411d..7d4cf366 100644
  	RescanROMs();
  	uae_time_calibrate();
 diff --git a/src/zfile.cpp b/src/zfile.cpp
-index d514c8b8..8edff596 100644
+index d514c8b8..65bdfab4 100644
 --- a/src/zfile.cpp
 +++ b/src/zfile.cpp
-@@ -2490,6 +2490,9 @@ uae_u32 zfile_crc32 (struct zfile *f)
- 	int pos, size;
- 	uae_u32 crc;
+@@ -36,6 +36,8 @@
+ #include "archivers/dms/pfile.h"
+ #include "archivers/wrp/warp.h"
  
-+	// amipi400: disable crc32 to speedup loading from floppy drive
-+	return 0;
++#include "amipi400/consts.h"
 +
- 	if (!f)
+ static struct zfile *zlist = 0;
+ 
+ const TCHAR *uae_archive_extensions[] = { _T("zip"), _T("rar"), _T("7z"), _T("lha"), _T("lzh"), _T("lzx"), _T("tar"), NULL };
+@@ -2497,6 +2499,13 @@ uae_u32 zfile_crc32 (struct zfile *f)
+ 	pos = zfile_ftell (f);
+ 	zfile_fseek (f, 0, SEEK_END);
+ 	size = zfile_ftell (f);
++
++	// amipi400: generate crc32 only from first 4096
++	// bytes to speedup loading from floppy drive
++	if (size > CRC32_MAX_SIZE) {
++		size = CRC32_MAX_SIZE;
++	}
++
+ 	p = xmalloc (uae_u8, size);
+ 	if (!p)
  		return 0;
- 	if (f->data)
