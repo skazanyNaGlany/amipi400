@@ -10,6 +10,9 @@ _numlock_state = False
 _last_system_sound_mute_state = 'unmute'
 _mute_system_sound_ts = 0
 _unmute_system_sound_after_secs = None
+_power_led_brightness = 100
+_set_power_led_process = None
+
 fd_cached_percents = {}
 
 
@@ -65,6 +68,31 @@ def enable_numlock():
 
 def disable_numlock():
     set_numlock_state(False)
+
+
+def set_power_led_brightness(brightness):
+    global _power_led_brightness
+    global _set_power_led_process
+
+    if brightness == _power_led_brightness:
+        return
+
+    if _set_power_led_process is not None:
+        if _set_power_led_process.poll() is None:
+            return
+
+    cmd = 'echo ' + str(brightness) + ' > /sys/class/leds/led0/brightness'
+
+    _set_power_led_process = subprocess.Popen(cmd, shell=True)
+    _power_led_brightness = brightness
+
+
+def enable_power_led():
+    set_power_led_brightness(100)
+
+
+def disable_power_led():
+    set_power_led_brightness(0)
 
 
 def get_devices_diskstats():
