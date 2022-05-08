@@ -27,7 +27,7 @@ try:
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
     from array import array
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -233,6 +233,15 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if 'last_caching_ts' not in ipart_data:
             ipart_data['last_caching_ts'] = 0
+
+        if 'enable_spinning' not in ipart_data:
+            ipart_data['enable_spinning'] = True
+
+        if 'last_read_offset' not in ipart_data:
+            ipart_data['last_read_offset'] = 0
+
+        if 'last_toggle_spinning_ts' not in ipart_data:
+            ipart_data['last_toggle_spinning_ts'] = 0
 
 
     def set_disk_devices(self, disk_devices: dict):
@@ -515,7 +524,24 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._save_file_access_time(ipart_data['device'])
 
 
+    def _toggle_spinning(self, offset, size, ipart_data):
+        current_time = time.time()
+
+        if not ipart_data['last_toggle_spinning_ts']:
+            ipart_data['last_toggle_spinning_ts'] = current_time
+
+        if current_time - ipart_data['last_toggle_spinning_ts'] < 3:
+            return
+
+        ipart_data['last_toggle_spinning_ts'] = current_time
+        ipart_data['last_read_offset'] = offset
+
+        ipart_data['enable_spinning'] = offset - ipart_data['last_read_offset'] != 0
+
+
     def _floppy_read(self, handle, offset, size, ipart_data):
+        self._toggle_spinning(offset, size, ipart_data)
+
         current_time = time.time()
 
         if not ipart_data['last_caching_ts']:
@@ -541,12 +567,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         # set_numlock_state(ipart_data['fully_cached'])
 
         if ipart_data['fully_cached']:
-            self._disk_spinner.set_spinning_by_pathname(
-                ipart_data['device'],
-                True,
-                offset,
-                PHYSICAL_SECTOR_SIZE
-            )
+            if ipart_data['enable_spinning']:
+                self._disk_spinner.set_spinning_by_pathname(
+                    ipart_data['device'],
+                    True,
+                    offset,
+                    PHYSICAL_SECTOR_SIZE
+                )
 
             if read_result['ex'] is not None:
                 raise read_result['ex']
@@ -608,8 +635,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         )
 
 
-    def _generic_read(self, handle, offset, size, device):
-        self._save_file_access_time(device)
+    def _generic_read(self, handle, offset, size, ipart_data):
+        self._save_file_access_time(ipart_data['device'])
+
+        if ipart_data['is_disk_drive']:
+            disable_power_led()
 
         return os_read(handle, offset, size)
 
@@ -656,7 +686,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             handle,
             offset,
             size,
-            ipart_data['device']
+            ipart_data
         )
 
 
@@ -702,6 +732,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if ipart_data['is_floppy_drive']:
             mute_system_sound(4)
+
+        if ipart_data['is_disk_drive']:
+            disable_power_led()
 
         ex = None
 
@@ -1253,16 +1286,15 @@ def find_new_devices(partitions: dict, old_partitions: dict) -> List[str]:
 
 
 def quick_format_single_device(device: str):
-    # blank_adf = bytearray(1024)
+    blank_dos = bytearray(1024)
 
-    # blank_adf[0] = ord('D')
-    # blank_adf[1] = ord('O')
-    # blank_adf[2] = ord('S')
+    blank_dos[0] = ord('D')
+    blank_dos[1] = ord('O')
+    blank_dos[2] = ord('S')
 
     try:
         with open(device, 'wb') as f:
-            f.write(bytes(1024))
-            # f.write(blank_adf)
+            f.write(blank_dos)
             f.flush()
     except OSError as ex:
         print_log(str(ex))
@@ -1551,6 +1583,7 @@ def main():
                 loop_counter += 1
 
             unmute_system_sound()
+            enable_power_led()
 
             time.sleep(100 / 1000)
             time.sleep(0)
@@ -1558,6 +1591,7 @@ def main():
         print_log('KeyboardInterrupt')
 
     unmute_system_sound()
+    enable_power_led()
     unmount_fuse_mountpoint()
     disk_spinner.stop()
 
