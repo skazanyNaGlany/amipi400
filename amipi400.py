@@ -251,6 +251,7 @@ COPY_DF_BLOCK_SIZE=32768
 COPY_HD_BLOCK_SIZE='8M'
 
 floppies = [None for x in range(MAX_FLOPPIES)]
+floppies_seq_numbers = [0 for x in range(MAX_FLOPPIES)]
 drives = [None for x in range(MAX_DRIVES)]
 cd_drives = [None for x in range(MAX_CD_DRIVES)]
 drives_changed = False
@@ -3236,6 +3237,7 @@ def attach_mountpoint_floppy(
     target_idf_index = None
 ):
     global floppies
+    global floppies_seq_numbers
 
     mountpoint = ipart_data['mountpoint']
 
@@ -3296,6 +3298,8 @@ def attach_mountpoint_floppy(
         ))
 
         put_command('config_changed 1')
+
+        floppies_seq_numbers[index] += 1
 
         return True
     else:
