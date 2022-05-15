@@ -524,24 +524,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._save_file_access_time(ipart_data['device'])
 
 
-    def _toggle_spinning(self, offset, size, ipart_data):
-        current_time = time.time()
-
-        if not ipart_data['last_toggle_spinning_ts']:
-            ipart_data['last_toggle_spinning_ts'] = current_time
-
-        if current_time - ipart_data['last_toggle_spinning_ts'] < 3:
-            return
-
-        ipart_data['last_toggle_spinning_ts'] = current_time
-        ipart_data['last_read_offset'] = offset
-
-        ipart_data['enable_spinning'] = offset - ipart_data['last_read_offset'] != 0
-
-
     def _floppy_read(self, handle, offset, size, ipart_data):
-        self._toggle_spinning(offset, size, ipart_data)
-
         current_time = time.time()
 
         if not ipart_data['last_caching_ts']:
