@@ -27,7 +27,7 @@ try:
     from pynput.keyboard import Key, Listener, Controller, KeyCode
     from configparser import ConfigParser, ParsingError
     from array import array
-    from utils import enable_numlock, disable_numlock, mute_system_sound, unmute_system_sound
+    from utils import enable_numlock, disable_numlock, mute_system_sound, unmute_system_sound, blink_numlock
 except ImportError as xie:
     print(str(xie))
     sys.exit(1)
@@ -41,6 +41,7 @@ AMIGA_DISK_DEVICES_STATUS_LOG = os.path.join(AMIGA_DISK_DEVICES_MOUNTPOINT, 'sta
 INTERNAL_MOUNTPOINTS_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'mountpoints')
 KICKSTART_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart.rom')
 KICKSTART_EXTENDED_COPY_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'kickstart_ext.rom')
+TMP_ADF_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'tmp.adf')
 LOG_PATHNAME = os.path.join(TMP_PATH_PREFIX, 'amipi400.log')
 FLOPPY_DISK_IN_DRIVE_SOUND_VOLUME = 20
 FLOPPY_EMPTY_DRIVE_SOUND_VOLUME = 0
@@ -249,6 +250,8 @@ AMIGA_DISK_DEVICE_TYPE_HDF = 5
 AMIGA_DISK_DEVICE_TYPE_ISO = 10
 COPY_DF_BLOCK_SIZE=32768
 COPY_HD_BLOCK_SIZE='8M'
+COPY_DF_MODE_DIRECT=1
+COPY_DF_MODE_INDIRECT=2
 
 floppies = [None for x in range(MAX_FLOPPIES)]
 floppies_seq_numbers = [0 for x in range(MAX_FLOPPIES)]
@@ -266,6 +269,7 @@ key_alt_gr_pressed = False
 key_shift_r_pressed = False
 key_cmd_pressed = False
 key_enter_pressed = False
+key_esc_pressed = False
 ctrl_alt_alt_gr_press_ts = 0
 tab_combo = []
 tab_pressed = False
@@ -296,11 +300,13 @@ current_floppy_speed = 100
 current_amiga_kickstart2model = None
 printed_emulator_full_command_line = False
 physical_cdrom_drives = OrderedDict()
+copy_df_mode = None
 copy_df_step = -1
 copy_df_source_index = 0
 copy_df_target_index = 0
 copy_df_source_data = None
 copy_df_target_data = None
+copy_df_floppies_seq_numbers_copy = {}
 is_emulator_paused = False
 copy_hd_step = -1
 copy_hd_source_index = 0
@@ -1085,11 +1091,44 @@ def find_similar_roms(rom_path: str) -> list:
     return sorted(similar)
 
 
-def process_floppy_copy_action(action: str):
+def process_floppy_copy_direct_action(source_idf_index, target_idf_index):
     global copy_df_step
     global copy_df_source_index
     global copy_df_target_index
+    global copy_df_mode
 
+    if not floppies[source_idf_index] or not floppies[target_idf_index]:
+        return
+
+    copy_df_mode = COPY_DF_MODE_DIRECT
+    copy_df_step = 0
+    copy_df_source_index = source_idf_index
+    copy_df_target_index = target_idf_index
+
+    print_log('Low-level direct-copying {source_file} to {target_file} (DF)'.format(
+        source_file=floppies[source_idf_index]['pathname'],
+        target_file=floppies[target_idf_index]['pathname']
+    ))
+
+
+def process_floppy_copy_indirect_action(source_idf_index):
+    global copy_df_step
+    global copy_df_source_index
+    global copy_df_mode
+
+    if not floppies[source_idf_index]:
+        return
+
+    copy_df_mode = COPY_DF_MODE_INDIRECT
+    copy_df_step = 0
+    copy_df_source_index = source_idf_index
+
+    print_log('Low-level indirect-copying {source_file} to ... (DF)'.format(
+        source_file=floppies[source_idf_index]['pathname']
+    ))
+
+
+def process_floppy_copy_action(action: str):
     if is_copying_data():
         # copy operation already pending
         return
@@ -1106,19 +1145,10 @@ def process_floppy_copy_action(action: str):
     target_idf_index = int(action_data[5])
 
     if source_idf_index == target_idf_index:
+        process_floppy_copy_indirect_action(source_idf_index)
         return
 
-    if not floppies[source_idf_index] or not floppies[target_idf_index]:
-        return
-
-    copy_df_step = 0
-    copy_df_source_index = source_idf_index
-    copy_df_target_index = target_idf_index
-
-    print_log('Low-level copying {source_file} to {target_file} (DF)'.format(
-        source_file=floppies[source_idf_index]['pathname'],
-        target_file=floppies[target_idf_index]['pathname']
-    ))
+    process_floppy_copy_direct_action(source_idf_index, target_idf_index)
 
 
 def process_hd_copy_action(action: str):
@@ -1160,10 +1190,11 @@ def process_hd_copy_action(action: str):
     ))
 
 
-def copy_df():
+def copy_df_direct():
     global copy_df_step
     global copy_df_source_data
     global copy_df_target_data
+    global copy_df_mode
 
     if copy_df_step < 0:
         return
@@ -1234,9 +1265,138 @@ def copy_df():
         disable_numlock()
 
         copy_df_step = -1
+        copy_df_mode = None
 
     if copy_df_step != -1:
         copy_df_step += 1
+
+
+def get_replaced_floppy_index(floppies_seq_numbers_copy):
+    if floppies_seq_numbers == floppies_seq_numbers_copy:
+        return None
+
+    for index in floppies_seq_numbers:
+        if floppies_seq_numbers[index] != floppies_seq_numbers_copy[index]:
+            return index
+
+    return None
+
+
+def copy_df_indirect():
+    global copy_df_step
+    global copy_df_source_data
+    global copy_df_target_data
+    global copy_df_mode
+    global copy_df_floppies_seq_numbers_copy
+
+    if copy_df_step < 0:
+        return
+
+    if copy_df_step == 0:
+        enable_numlock()
+
+        # mute all sounds
+        if ENABLE_COPY_DF_MUTE_SOUNDS:
+            mute_system_sound()
+            disable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_df_step == 1:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 2:
+        # eject both floppies
+        copy_df_source_data = detach_floppy(copy_df_source_index)
+
+        update_floppy_drive_sound(copy_df_source_index)
+
+        put_local_commit_command(1)
+    elif copy_df_step == 3:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 4:
+        # pause emulator
+        pause_emulator(True)
+    elif copy_df_step == 5:
+        # copy using DD
+        os.system('dd bs={block_size} if="{source_file}" of="{target_file}" status=progress'.format(
+            block_size=COPY_DF_BLOCK_SIZE,
+            source_file=copy_df_source_data['pathname'],
+            target_file=TMP_ADF_PATHNAME
+        ))
+
+        copy_df_floppies_seq_numbers_copy = floppies_seq_numbers.copy()
+    elif copy_df_step == 6:
+        # sync + clear caches
+        clear_system_cache()
+    elif copy_df_step == 7:
+        if key_esc_pressed:
+            # user pressed escape key, just set last step
+            # and return
+            copy_df_step = 11
+
+            disable_numlock()
+            pause_emulator(False)
+
+            if ENABLE_COPY_DF_MUTE_SOUNDS:
+                unmute_system_sound()
+                enable_emulator_sound()
+                put_local_commit_command(1)
+
+            return
+
+        # replaced_index must be exactly the same as copy_df_source_index
+        # I'm just checking if the user was replaced the
+        # floppy manually
+        replaced_index = get_replaced_floppy_index(copy_df_floppies_seq_numbers_copy)
+
+        if replaced_index is None or replaced_index != copy_df_source_index:
+            blink_numlock()
+            return
+
+        enable_numlock()
+
+        copy_df_source_data = detach_floppy(copy_df_source_index)
+
+        update_floppy_drive_sound(copy_df_source_index)
+
+        os.system('dd bs={block_size} if="{source_file}" of="{target_file}" status=progress'.format(
+            block_size=COPY_DF_BLOCK_SIZE,
+            source_file=TMP_ADF_PATHNAME,
+            target_file=copy_df_source_data['pathname']
+        ))
+    elif copy_df_step == 8:
+        # unpause emulator
+        pause_emulator(False)
+    elif copy_df_step == 9:
+        # unmute all sounds
+        if ENABLE_COPY_DF_MUTE_SOUNDS:
+            unmute_system_sound()
+            enable_emulator_sound()
+            put_local_commit_command(1)
+    elif copy_df_step == 10:
+        if attach_mountpoint_floppy(
+            copy_df_source_data['device'],
+            copy_df_source_data['medium'],
+            copy_df_source_data['pathname'],
+            target_idf_index=copy_df_source_index
+        ):
+            update_floppy_drive_sound(copy_df_source_index)
+
+        put_local_commit_command(1)
+        disable_numlock()
+    elif copy_df_step == 11:
+        copy_df_step = -1
+        copy_df_mode = None
+
+    if copy_df_step != -1:
+        copy_df_step += 1
+
+
+def copy_df():
+    if copy_df_mode == COPY_DF_MODE_DIRECT:
+        copy_df_direct()
+    elif copy_df_mode == COPY_DF_MODE_INDIRECT:
+        copy_df_indirect()
 
 
 def copy_hd():
@@ -1562,6 +1722,12 @@ def process_tab_combo_action(partitions: dict, action: str):
     elif action.startswith('copy') and len_action == 10:
         if endswith_dfX(action):
             # copydf<source index>df<target index>
+            # direct or indirect floppy copy
+            # direct: copydf0df1
+            #   both floppies must be attached
+            # indirect: copydf0df0
+            #   floppy will be dumped then user need
+            #   to replace df0 floppy when numlock blinks
             process_floppy_copy_action(action)
         elif endswith_dhX(action):
             # copydh<source index>dh<target index>
@@ -3053,8 +3219,8 @@ def pause_emulator(pause: bool):
     is_emulator_paused = pause
     pause_str = '1' if pause else '0'
 
-    put_command('pause_emulation ' + pause_str)
-    put_command('config_changed 1')
+    put_command('pause_emulation ' + pause_str, False, True)
+    put_command('config_changed 1', False, True)
 
 
 def update_floppy_drive_sound(drive_index: int):
@@ -3385,18 +3551,22 @@ def put_local_commit_command(sleep_seconds: int = 0):
         put_command('local-sleep 1')
 
 
-def put_command(command: str, reset: bool = False):
+def put_command(command: str, reset: bool = False, force = False):
     global commands
 
     if reset:
         commands = []
 
-    if commands:
-        if commands[len(commands) - 1] == command:
-            # do not add same command
-            return
+    if is_emulator_paused and not force:
+        return
 
-    commands.append(command)
+    if command:
+        if commands:
+            if commands[len(commands) - 1] == command:
+                # do not add same command
+                return
+
+        commands.append(command)
 
 
 def get_mountpoint_config(mountpoint: str):
@@ -4150,6 +4320,7 @@ def on_key_press(key):
     global tab_pressed
     global key_cmd_pressed
     global key_enter_pressed
+    global key_esc_pressed
     global ctrl_alt_alt_gr_press_ts
     global tab_combo
 
@@ -4175,6 +4346,9 @@ def on_key_press(key):
         key_enter_pressed = True
 
     if key == Key.esc:
+        key_esc_pressed = True
+
+    if key == Key.esc:
         tab_combo = []
     else:
         tab_combo.append(key)
@@ -4191,6 +4365,7 @@ def on_key_release(key):
     global tab_pressed
     global key_cmd_pressed
     global key_enter_pressed
+    global key_esc_pressed
     global ctrl_alt_alt_gr_press_ts
 
     if key == Key.ctrl:
@@ -4213,6 +4388,9 @@ def on_key_release(key):
 
     if key == Key.enter:
         key_enter_pressed = False
+
+    if key == Key.esc:
+        key_esc_pressed = False
 
 
 def atexit_handler():

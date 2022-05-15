@@ -12,6 +12,7 @@ _mute_system_sound_ts = 0
 _unmute_system_sound_after_secs = None
 _power_led_brightness = 100
 _set_power_led_process = None
+_blink_numlock_ts = 0
 
 fd_cached_percents = {}
 
@@ -68,6 +69,19 @@ def enable_numlock():
 
 def disable_numlock():
     set_numlock_state(False)
+
+
+def blink_numlock():
+    global _blink_numlock_ts
+
+    current_time = time.time()
+
+    if current_time - _blink_numlock_ts < 1:
+        return
+
+    _blink_numlock_ts = current_time
+
+    set_numlock_state(not _numlock_state)
 
 
 def set_power_led_brightness(brightness):
