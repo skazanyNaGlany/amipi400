@@ -13,6 +13,7 @@ _unmute_system_sound_after_secs = None
 _power_led_brightness = 100
 _set_power_led_process = None
 _blink_numlock_ts = 0
+_simple_mixer_control = None
 
 fd_cached_percents = {}
 
@@ -37,6 +38,44 @@ def unmute_system_sound():
     set_system_sound_mute_state('unmute')
 
 
+def init_simple_mixer_control():
+    global _simple_mixer_control
+
+    process = subprocess.Popen(
+        [
+            'amixer',
+            'scontrols'
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    out, err = process.communicate()
+
+    lines = out.splitlines()
+
+    if not lines:
+        return
+
+    lines[0] = lines[0].strip()
+
+    if not lines[0]:
+        return
+
+    first_control = lines[0].decode('utf-8')
+    first_control = first_control.replace('Simple mixer control \'', '')
+    first_control = first_control.replace('\',0', '')
+
+    first_control = first_control.strip()
+
+    if not first_control:
+        print('Simple mixer control not found')
+        return
+
+    print('Found simple mixer control', first_control)
+
+    _simple_mixer_control = first_control
+
+
 def set_system_sound_mute_state(state: str):
     global _last_system_sound_mute_state
 
@@ -45,7 +84,11 @@ def set_system_sound_mute_state(state: str):
 
     _last_system_sound_mute_state = state
 
-    subprocess.Popen('amixer set Master ' + state, shell=True)
+    if not _simple_mixer_control:
+        print('No simple mixer control, run init_simple_mixer_control()')
+        return
+
+    subprocess.Popen('amixer set ' + _simple_mixer_control + ' ' + state, shell=True)
 
 
 def set_numlock_state(state: bool):
