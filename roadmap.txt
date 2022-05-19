@@ -754,10 +754,15 @@ hexdump -v -C /tmp/amiga_disk_devices/__dev__sda.adf
 
 
 0. disable floppy spinning when game read from 0 sector sequently
-1. format with first bbytes DOS 
-2. re-implement low-level df copy
+v 1. format with first bbytes DOS 
+v 2. re-implement low-level df copy
 3. remove print_log
 4. refactor
 5. refactor format_devices
 6. remove disable_emulator_sound and enable_emulator_sound
 7. implement raw reading from CD using something like "readsectors"
+    # hdparm --read-sector 16782858 /dev/sda
+  cdrdao read-cd --remote -v0 --read-raw --device 0,1,0 --driver generic-mmc --paranoia-mode 3 --datafile audiocd.bin  audiocd.toc
+
+  cdrdao read-cd --remote -v0 --read-raw --device /dev/sr0 --driver generic-mmc --paranoia-mode 3 --datafile audiocd.bin  audiocd.toc
+
