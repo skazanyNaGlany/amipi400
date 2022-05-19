@@ -1,9 +1,13 @@
 import sys
 import os
+import traceback
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
 assert os.geteuid() == 0, 'This script must be run as root'
+
+os.environ['PYNPUT_BACKEND_KEYBOARD'] = 'uinput'
+os.environ['PYNPUT_BACKEND_MOUSE'] = 'dummy'
 
 try:
     import psutil
@@ -27,9 +31,9 @@ try:
     from pynput.keyboard import Key, Listener, Controller, KeyCode
     from configparser import ConfigParser, ParsingError
     from array import array
-    from utils import enable_numlock, disable_numlock, mute_system_sound, unmute_system_sound, blink_numlock
+    from utils import enable_numlock, disable_numlock, mute_system_sound, unmute_system_sound, blink_numlock, init_simple_mixer_control
 except ImportError as xie:
-    print(str(xie))
+    traceback.print_exc()
     sys.exit(1)
 
 
@@ -4410,6 +4414,7 @@ copy_kickstart()
 atexit.register(atexit_handler)
 configure_tmp_ini()
 configure_system()
+init_simple_mixer_control()
 configure_volumes()
 clear_system_cache()
 delete_unused_mountpoints()

@@ -3,10 +3,14 @@ from errno import EIO, ENOSPC, EROFS
 import sys
 import os
 import subprocess
+import traceback
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
 assert os.geteuid() == 0, 'This script must be run as root'
+
+os.environ['PYNPUT_BACKEND_KEYBOARD'] = 'uinput'
+os.environ['PYNPUT_BACKEND_MOUSE'] = 'dummy'
 
 try:
     import sh
@@ -27,9 +31,9 @@ try:
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
     from array import array
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control
 except ImportError as xie:
-    print(str(xie))
+    traceback.print_exc()
     sys.exit(1)
 
 
@@ -1536,6 +1540,7 @@ def main():
     # # uncomment this to enable FUSE logging
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
+    init_simple_mixer_control()
     disk_spinner = init_disk_spinner()
     init_fuse(disk_devices, disk_spinner)
     update_physical_floppy_drives(physical_floppy_drives)
