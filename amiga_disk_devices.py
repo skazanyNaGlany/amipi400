@@ -249,13 +249,14 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def set_disk_devices(self, disk_devices: dict):
-        for ipart_dev, ipart_data in disk_devices.items():
-            self._add_defaults(ipart_data)
+        with self._mutex:
+            for ipart_dev, ipart_data in disk_devices.items():
+                self._add_defaults(ipart_data)
 
-        self._disk_devices = disk_devices
-        self._status_log_content = None
+            self._disk_devices = disk_devices
+            self._status_log_content = None
 
-        self._flush_handles()
+            self._flush_handles()
 
 
     def _flush_handles(self):
@@ -272,57 +273,55 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     def _close_handle(self, device_pathname: str):
         handle = None
 
-        with self._mutex:
-            try:
-                handle = self._handles[device_pathname]
+        try:
+            handle = self._handles[device_pathname]
 
-                os.close(handle)
-            except:
-                pass
+            os.close(handle)
+        except:
+            pass
 
-            try:
-                del self._handles[device_pathname]
-            except:
-                pass
+        try:
+            del self._handles[device_pathname]
+        except:
+            pass
 
-            try:
-                del self._access_times[device_pathname]
-            except:
-                pass
+        try:
+            del self._access_times[device_pathname]
+        except:
+            pass
 
-            try:
-                del self._modification_times[device_pathname]
-            except:
-                pass
+        try:
+            del self._modification_times[device_pathname]
+        except:
+            pass
 
         return handle
 
 
     def _open_handle(self, ipart_data: dict) -> Optional[int]:
-        with self._mutex:
-            device_pathname = ipart_data['device']
+        device_pathname = ipart_data['device']
 
-            if device_pathname in self._handles:
-                return self._handles[device_pathname]
-
-            self._set_fully_cached(ipart_data, False)
-
-            is_readable = ipart_data['is_readable']
-            is_writable = ipart_data['is_writable']
-
-            mode = os.O_SYNC | os.O_RSYNC
-
-            if is_readable and is_writable:
-                mode |= os.O_RDWR
-            else:
-                mode |= os.O_RDONLY
-
-            try:
-                self._handles[device_pathname] = os.open(device_pathname, mode)
-            except:
-                return None
-
+        if device_pathname in self._handles:
             return self._handles[device_pathname]
+
+        self._set_fully_cached(ipart_data, False)
+
+        is_readable = ipart_data['is_readable']
+        is_writable = ipart_data['is_writable']
+
+        mode = os.O_SYNC | os.O_RSYNC
+
+        if is_readable and is_writable:
+            mode |= os.O_RDWR
+        else:
+            mode |= os.O_RDONLY
+
+        try:
+            self._handles[device_pathname] = os.open(device_pathname, mode)
+        except:
+            return None
+
+        return self._handles[device_pathname]
 
 
     def _find_file(self, public_name: str) -> Optional[dict]:
@@ -399,37 +398,38 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def getattr(self, path, fh=None):
-        self._flush_handles()
+        with self._mutex:
+            self._flush_handles()
 
-        if path in self._static_files:
-            return self._static_files[path]
+            if path in self._static_files:
+                return self._static_files[path]
 
-        name = self._clear_pathname(path)
+            name = self._clear_pathname(path)
 
-        ipart_data = self._find_file(name)
+            ipart_data = self._find_file(name)
 
-        if not ipart_data:
-            raise FuseOSError(ENOENT)
+            if not ipart_data:
+                raise FuseOSError(ENOENT)
 
-        access_time = self._get_file_access_time(ipart_data['device'])
-        modification_time = self._get_file_modification_time(ipart_data['device'])
+            access_time = self._get_file_access_time(ipart_data['device'])
+            modification_time = self._get_file_modification_time(ipart_data['device'])
 
-        is_readable = ipart_data['is_readable']
-        is_writable = ipart_data['is_writable']
+            is_readable = ipart_data['is_readable']
+            is_writable = ipart_data['is_writable']
 
-        perm_int_mask = self._genrate_perm_int_mask(
-            is_readable, is_writable, False,
-            is_readable, is_writable, False,
-            is_readable, is_writable, False
-        )
+            perm_int_mask = self._genrate_perm_int_mask(
+                is_readable, is_writable, False,
+                is_readable, is_writable, False,
+                is_readable, is_writable, False
+            )
 
-        return dict(st_mode=(S_IFREG | perm_int_mask),
-                    st_nlink=1,
-                    st_size=ipart_data['size'],
-                    st_ctime=self._instance_time,
-                    st_atime=access_time,
-                    st_mtime=modification_time
-                )
+            return dict(st_mode=(S_IFREG | perm_int_mask),
+                        st_nlink=1,
+                        st_size=ipart_data['size'],
+                        st_ctime=self._instance_time,
+                        st_atime=access_time,
+                        st_mtime=modification_time
+                    )
 
 
     def _partial_read(
@@ -632,49 +632,50 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def read(self, path, size, offset, fh):
-        self._flush_handles()
+        with self._mutex:
+            self._flush_handles()
 
-        name = self._clear_pathname(path)
+            name = self._clear_pathname(path)
 
-        if name == STATUS_FILE_NAME:
-            return self._status_log_read(offset, size)
+            if name == STATUS_FILE_NAME:
+                return self._status_log_read(offset, size)
 
-        ipart_data = self._find_file(name)
+            ipart_data = self._find_file(name)
 
-        if not ipart_data:
-            raise FuseOSError(ENOENT)
+            if not ipart_data:
+                raise FuseOSError(ENOENT)
 
-        file_size = ipart_data['size']
+            file_size = ipart_data['size']
 
-        if offset + size > file_size:
-            size = file_size - offset
+            if offset + size > file_size:
+                size = file_size - offset
 
-        if offset >= file_size or size <= 0:
-            self._save_file_access_time(ipart_data['device'])
+            if offset >= file_size or size <= 0:
+                self._save_file_access_time(ipart_data['device'])
 
-            return b''
+                return b''
 
-        handle = self._open_handle(ipart_data)
+            handle = self._open_handle(ipart_data)
 
-        if handle is None:
-            self._save_file_access_time(ipart_data['device'])
+            if handle is None:
+                self._save_file_access_time(ipart_data['device'])
 
-            raise FuseOSError(EIO)
+                raise FuseOSError(EIO)
 
-        if ipart_data['is_floppy_drive']:
-            return self._floppy_read(
+            if ipart_data['is_floppy_drive']:
+                return self._floppy_read(
+                    handle,
+                    offset,
+                    size,
+                    ipart_data
+                )
+
+            return self._generic_read(
                 handle,
                 offset,
                 size,
                 ipart_data
             )
-
-        return self._generic_read(
-            handle,
-            offset,
-            size,
-            ipart_data
-        )
 
 
     def truncate(self, path, length, fh=None):
@@ -683,88 +684,91 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def write(self, path, data, offset, fh):
-        self._flush_handles()
+        with self._mutex:
+            self._flush_handles()
 
-        name = self._clear_pathname(path)
-        ipart_data = self._find_file(name)
+            name = self._clear_pathname(path)
+            ipart_data = self._find_file(name)
 
-        if not ipart_data:
-            raise FuseOSError(ENOENT)
+            if not ipart_data:
+                raise FuseOSError(ENOENT)
 
-        if not ipart_data['is_writable']:
-            raise FuseOSError(EROFS)
+            if not ipart_data['is_writable']:
+                raise FuseOSError(EROFS)
 
-        self._set_fully_cached(ipart_data, False)
-        self._save_file_modification_time(ipart_data['device'])
-
-        max_file_size = ipart_data['size']
-        len_data = len(data)
-
-        if offset + len_data > max_file_size or offset >= max_file_size:
+            self._set_fully_cached(ipart_data, False)
             self._save_file_modification_time(ipart_data['device'])
 
-            raise FuseOSError(ENOSPC)
+            max_file_size = ipart_data['size']
+            len_data = len(data)
 
-        if len_data == 0:
-            self._save_file_modification_time(ipart_data['device'])
+            if offset + len_data > max_file_size or offset >= max_file_size:
+                self._save_file_modification_time(ipart_data['device'])
 
-            return b''
+                raise FuseOSError(ENOSPC)
 
-        handle = self._open_handle(ipart_data)
+            if len_data == 0:
+                self._save_file_modification_time(ipart_data['device'])
 
-        if handle is None:
-            self._save_file_modification_time(ipart_data['device'])
+                return b''
 
-            raise FuseOSError(EIO)
+            handle = self._open_handle(ipart_data)
 
-        if ipart_data['is_floppy_drive']:
-            mute_system_sound(4)
+            if handle is None:
+                self._save_file_modification_time(ipart_data['device'])
 
-        if ipart_data['is_disk_drive']:
-            disable_power_led()
-
-        ex = None
-
-        try:
-            result = os_write(handle, offset, data)
-
-            self._save_file_modification_time(ipart_data['device'])
+                raise FuseOSError(EIO)
 
             if ipart_data['is_floppy_drive']:
                 mute_system_sound(4)
-        except Exception as x:
-            ex = x
 
-        self._save_file_modification_time(ipart_data['device'])
+            if ipart_data['is_disk_drive']:
+                disable_power_led()
 
-        if ex is not None:
-            raise ex
+            ex = None
 
-        return result
+            try:
+                result = os_write(handle, offset, data)
+
+                self._save_file_modification_time(ipart_data['device'])
+
+                if ipart_data['is_floppy_drive']:
+                    mute_system_sound(4)
+            except Exception as x:
+                ex = x
+
+            self._save_file_modification_time(ipart_data['device'])
+
+            if ex is not None:
+                raise ex
+
+            return result
 
 
     def readdir(self, path, fh):
-        self._flush_handles()
+        with self._mutex:
+            self._flush_handles()
 
-        entries = [
-            '.',
-            '..',
-            STATUS_FILE_NAME
-        ]
+            entries = [
+                '.',
+                '..',
+                STATUS_FILE_NAME
+            ]
 
-        if path != '/':
+            if path != '/':
+                return entries
+
+            for ipart_dev, ipart_data in self._disk_devices.items():
+                entries.append(
+                    ipart_data['public_name']
+                )
+
             return entries
-
-        for ipart_dev, ipart_data in self._disk_devices.items():
-            entries.append(
-                ipart_data['public_name']
-            )
-
-        return entries
 
 
     def destroy(self, path):
-        self._close_handles()
+        with self._mutex:
+            self._close_handles()
 
 
 def print_log(*args):
