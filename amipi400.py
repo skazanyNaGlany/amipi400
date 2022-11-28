@@ -6,9 +6,6 @@ assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
 assert os.geteuid() == 0, 'This script must be run as root'
 
-os.environ['PYNPUT_BACKEND_KEYBOARD'] = 'uinput'
-os.environ['PYNPUT_BACKEND_MOUSE'] = 'dummy'
-
 try:
     import psutil
     import sh
