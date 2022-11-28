@@ -1,3 +1,4 @@
+import glob
 import os
 import time
 import subprocess
@@ -384,3 +385,36 @@ def get_fd_cached_percent(fd, size, between_secs = None):
     }
 
     return percent
+
+
+def get_dir_size(dir: str):
+    # https://stackoverflow.com/a/4368431
+    total_size = os.path.getsize(dir)
+    for item in os.listdir(dir):
+        itempath = os.path.join(dir, item)
+        if os.path.isfile(itempath):
+            total_size += os.path.getsize(itempath)
+        elif os.path.isdir(itempath):
+            total_size += get_dir_size(itempath)
+    return total_size
+
+
+def get_dir_oldest_file(dir: str):
+    # https://stackoverflow.com/a/65464617
+    return sorted(glob.glob(os.path.join(dir, '*')), key=os.path.getctime)[0]
+
+
+def file_put_contents(pathname: str, contents: bytes):
+    with open(pathname, 'wb+') as f:
+        return f.write(contents)
+
+
+def save_replace_file(pathname: str, contents: bytes, max_dir_size: int):
+    dir = os.path.dirname(pathname)
+
+    if get_dir_size(dir) >= max_dir_size:
+        oldest_pathname = get_dir_oldest_file(dir)
+
+        os.remove(oldest_pathname)
+
+    file_put_contents(pathname, contents)

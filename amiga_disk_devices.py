@@ -22,6 +22,8 @@ try:
     import numpy
     import threading
     import threading
+    import hashlib
+    import ctypes
 
     from collections import OrderedDict
     from io import StringIO
@@ -31,7 +33,7 @@ try:
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
     from array import array
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, get_dir_size
 except ImportError as xie:
     traceback.print_exc()
     sys.exit(1)
@@ -55,6 +57,7 @@ AMIGA_DISK_DEVICE_TYPE_HDF = 5
 AMIGA_DISK_DEVICE_TYPE_ISO = 10
 FLOPPY_DEVICE_SIZE = 1474560
 FLOPPY_ADF_SIZE = 901120
+FLOPPY_DEVICE_LAST_SECTOR = 1474048
 FLOPPY_ADF_EXTENSION = '.adf'
 HD_HDF_EXTENSION = '.hdf'
 CD_ISO_EXTENSION = '.iso'
@@ -68,6 +71,8 @@ PHYSICAL_SECTOR_SIZE = 512
 PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS = 100
 STATUS_FILE_NAME = 'status.log'
 CACHE_DATA_BETWEEN_SECS = 3
+CACHED_ADFS_MAX_DIR_SIZE = 1073741824       # 1GB
+CACHED_ADFS_DIR = os.path.realpath('./cached_adfs')
 MAIN_LOOP_MAX_COUNTER = 0
 
 
@@ -91,6 +96,14 @@ def os_write(handle, offset, data):
         os.lseek(handle, offset, os.SEEK_SET)
 
         return os.write(handle, data)
+
+
+class CachedADFHeader(ctypes.Structure):
+    _fields_ = [
+        ('sign', ctypes.c_char * 9),
+        ('header_type', ctypes.c_char * 32),
+        ('sha512', ctypes.c_char * 129)
+    ]
 
 
 class DiskSpinner(threading.Thread):
@@ -588,12 +601,50 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                     if read_result2['total_read_time_ms'] < PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS:
                         self._set_fully_cached(ipart_data, True)
 
+                        self._floppy_cache_adf(handle, ipart_data)
+
         self._save_file_access_time(ipart_data['device'])
 
         if read_result['ex'] is not None:
             raise read_result['ex']
 
         return read_result['all_data']
+
+
+    def _floppy_cache_adf(self, handle, ipart_data):
+        # read whole ADF
+        read_result3 = self._partial_read(
+            handle,
+            0,
+            FLOPPY_ADF_SIZE,
+            FLOPPY_ADF_SIZE,
+            PHYSICAL_FLOPPY_SECTOR_READ_TIME_MS,
+            self._pre_read_callback,
+            None,
+            ipart_data
+        )
+
+        # calculate sha512 hash from readed ADF
+        adf_hash = hashlib.sha512()
+        adf_hash.update(read_result3['all_data'])
+
+        hexdigest = adf_hash.hexdigest()
+
+        # save the CachedADFHeader at last sector of the device file
+        header = CachedADFHeader()
+        header.sign = bytes('AMIPI400' + '\0', 'utf8')
+        header.header_type = bytes('CachedADFHeader' + '\0', 'utf8')
+        header.sha512 = bytes(hexdigest + '\0', 'utf8')
+
+        os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, bytes(header))
+
+        # save a copy of the ADF file in the cache dir
+        # sha512 + '.adf'
+        save_replace_file(
+            os.path.join(CACHED_ADFS_DIR, hexdigest + FLOPPY_ADF_EXTENSION),
+            read_result3['all_data'],
+            CACHED_ADFS_MAX_DIR_SIZE
+        )
 
 
     def _generate_status_log(self):
@@ -1552,6 +1603,7 @@ def main():
     update_physical_cdrom_drives(physical_cdrom_drives)
     print_physical_cdrom_drives(physical_cdrom_drives)
     init_keyboard_listener()
+    os.makedirs(CACHED_ADFS_DIR, exist_ok=True)
 
     try:
         while True:
