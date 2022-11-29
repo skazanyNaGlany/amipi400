@@ -644,7 +644,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, hexdigest + FLOPPY_ADF_EXTENSION)
 
-        if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) < FLOPPY_ADF_SIZE:
+        if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
             # save a copy of the ADF file in the cache dir
             # sha512 + '.adf'
             save_replace_file(
