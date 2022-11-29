@@ -652,6 +652,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 read_result3['all_data'],
                 CACHED_ADFS_MAX_DIR_SIZE
             )
+            os.sync()
 
 
     def _generate_status_log(self):
