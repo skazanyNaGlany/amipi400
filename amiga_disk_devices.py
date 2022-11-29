@@ -610,6 +610,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def _floppy_cache_adf(self, handle, ipart_data):
+        # should be called only once when saving cached ADF
+        # since read() and write() will not call
+        # _floppy_read()
+
         if not ENABLE_ADF_CACHING:
             return
 
