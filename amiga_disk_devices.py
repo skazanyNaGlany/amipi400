@@ -1230,13 +1230,16 @@ def add_disk_devices2(partitions: dict, disk_devices: dict):
             if not unknown and not force_add:
                 continue
 
-            mute_system_sound(6)
             add_adf_disk_device(
                 ipart_dev,
                 ipart_data,
                 disk_devices,
                 force_add
             )
+
+            if not ipart_data['cached_adf_pathname']:
+                # ADF is not cached, need to mute the system sound
+                mute_system_sound(6)
         elif ipart_data['is_disk_drive']:
             if not unknown and not force_add:
                 continue
