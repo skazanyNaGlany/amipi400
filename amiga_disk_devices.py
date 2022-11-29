@@ -252,12 +252,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if 'enable_spinning' not in ipart_data:
             ipart_data['enable_spinning'] = True
 
-        if 'last_read_offset' not in ipart_data:
-            ipart_data['last_read_offset'] = 0
-
-        if 'last_toggle_spinning_ts' not in ipart_data:
-            ipart_data['last_toggle_spinning_ts'] = 0
-
 
     def set_disk_devices(self, disk_devices: dict):
         with self._mutex:
