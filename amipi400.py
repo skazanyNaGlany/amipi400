@@ -61,7 +61,6 @@ ENABLE_F12_OPEN_GUI = True
 # ENABLE_F12_OPEN_GUI = False
 ENABLE_PHYSICAL_FLOPPY_DRIVES = True
 ENABLE_AMIGA_DISK_DEVICES_SUPPORT = True
-ENABLE_FLOPPY_DRIVE_READ_A_HEAD = False
 ENABLE_SET_CACHE_PRESSURE = False
 ENABLE_INTERNAL_DRIVE = True
 ENABLE_PHYSICAL_FLOPPY_READ_SPEED_HACK = False  # ~20 secs faster (can break compatibility in some games)
@@ -110,7 +109,6 @@ FLOPPY_EXTENSIONS = ['*.adf']
 CD_EXTENSIONS = ['*.cue', '*.iso', '*.nrg']
 HARD_FILE_EXTENSIONS = ['*.hdf']
 CD_PERM_FIX_PATHNAME = '/dev/zero'
-DEFAULT_READ_A_HEAD_SECTORS = 256
 WPA_SUPPLICANT_CONF_PATHNAME = 'wpa_supplicant.conf'
 ALT_GR_KEYCODE = 65027
 ALT_GR_UK_KEYCODE = 65406
@@ -2996,34 +2994,6 @@ def process_amiga_disk_devices(old_amiga_disk_devices: dict, amiga_disk_devices:
     attach_amiga_disk_devices(amiga_disk_devices)
 
 
-def set_devices_read_a_head(devices: List[str], amiga_disk_devices: dict, partitions: dict):
-    devices = list(set(devices))
-
-    for ipart_dev in devices:
-        if ipart_dev not in partitions:
-            continue
-
-        if ipart_dev in amiga_disk_devices:
-            # do not allow to change read-a-head for device
-            # managed by amiga_disk_devices.py
-            # should not get here
-            continue
-
-        ipart_data = partitions[ipart_dev]
-
-        if not ipart_data['mountpoint']:
-            continue
-
-        if not is_mountpoint_attached(ipart_data['mountpoint']):
-            continue
-
-        if ipart_data['is_floppy_drive']:
-            if ENABLE_FLOPPY_DRIVE_READ_A_HEAD:
-                set_device_read_a_head_sectors(ipart_dev, DEFAULT_READ_A_HEAD_SECTORS)
-            else:
-                set_device_read_a_head_sectors(ipart_dev, 0)
-
-
 def set_device_read_a_head_sectors(device: str, sectors: int):
     os.system('blockdev --setra {sectors} {device}'.format(
         sectors=sectors,
@@ -4458,9 +4428,6 @@ while True:
 
     if amiga_disk_devices != old_amiga_disk_devices:
         process_amiga_disk_devices(old_amiga_disk_devices, amiga_disk_devices)
-
-    if new_attached or other_attached:
-        set_devices_read_a_head(new_attached + other_attached, amiga_disk_devices, partitions)
 
     if unmounted or new_mounted or new_attached or new_detached or other_attached:
         # something changed
