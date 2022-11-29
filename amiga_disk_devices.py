@@ -44,6 +44,7 @@ ENABLE_LOGGER = False
 ENABLE_REINIT_HANDLE_AFTER_SECS = 0
 ENABLE_FLOPPY_DRIVE_READ_A_HEAD = True
 ENABLE_SET_CACHE_PRESSURE = False
+ENABLE_ADF_CACHING = True
 DISABLE_SWAP = False
 DEFAULT_READ_A_HEAD_SECTORS = 24      # 256 system default, 44 seems ok, 24 seems best
 SYNC_DISKS_SECS = 60 * 3
@@ -609,6 +610,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
 
     def _floppy_cache_adf(self, handle, ipart_data):
+        if not ENABLE_ADF_CACHING:
+            return
+
         # read whole ADF
         read_result3 = self._partial_read(
             handle,
