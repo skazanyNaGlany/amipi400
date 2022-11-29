@@ -642,13 +642,16 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, bytes(header))
 
-        # save a copy of the ADF file in the cache dir
-        # sha512 + '.adf'
-        save_replace_file(
-            os.path.join(CACHED_ADFS_DIR, hexdigest + FLOPPY_ADF_EXTENSION),
-            read_result3['all_data'],
-            CACHED_ADFS_MAX_DIR_SIZE
-        )
+        cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, hexdigest + FLOPPY_ADF_EXTENSION)
+
+        if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) < FLOPPY_ADF_SIZE:
+            # save a copy of the ADF file in the cache dir
+            # sha512 + '.adf'
+            save_replace_file(
+                cached_adf_pathname,
+                read_result3['all_data'],
+                CACHED_ADFS_MAX_DIR_SIZE
+            )
 
 
     def _generate_status_log(self):
