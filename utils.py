@@ -251,6 +251,13 @@ def file_get_contents(pathname, size=None):
         return f.read(size)
 
 
+def file_get_bytes_contents(pathname, size=None, offset=0):
+    with open(pathname, 'rb') as f:
+        f.seek(offset, 0)
+
+        return f.read(size)
+
+
 def get_disk_partitions():
     '''
     Same as lsblk but much quicker.
