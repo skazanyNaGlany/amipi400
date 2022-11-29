@@ -1126,7 +1126,7 @@ def add_adf_disk_device(
     disk_devices[ipart_dev]['force_add'] = force_add
     disk_devices[ipart_dev]['cached_adf_pathname'] = ''
 
-    update_cached_adf_flags(ipart_dev, ipart_data)
+    update_cached_adf_flags(ipart_dev, disk_devices[ipart_dev])
 
 
 def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
@@ -1246,7 +1246,7 @@ def add_disk_devices2(partitions: dict, disk_devices: dict):
                 force_add
             )
 
-            if not ipart_data['cached_adf_pathname']:
+            if not disk_devices[ipart_dev]['cached_adf_pathname']:
                 # ADF is not cached, need to mute the system sound
                 mute_system_sound(6)
         elif ipart_data['is_disk_drive']:
