@@ -30,7 +30,7 @@ try:
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
     from array import array
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, get_dir_size
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, get_dir_size, file_get_bytes_contents
 except ImportError as xie:
     traceback.print_exc()
     sys.exit(1)
@@ -71,6 +71,9 @@ STATUS_FILE_NAME = 'status.log'
 CACHE_DATA_BETWEEN_SECS = 3
 CACHED_ADFS_MAX_DIR_SIZE = 1073741824       # 1GB
 CACHED_ADFS_DIR = os.path.realpath('./cached_adfs')
+CACHED_ADF_SIGN = 'AMIPI400'
+CACHED_ADF_HEADER_TYPE = 'CachedADFHeader'
+CACHED_ADF_STR_ENCODING = 'utf8'
 MAIN_LOOP_MAX_COUNTER = 0
 
 
@@ -98,7 +101,7 @@ def os_write(handle, offset, data):
 
 class CachedADFHeader(ctypes.Structure):
     _fields_ = [
-        ('sign', ctypes.c_char * 9),
+        ('sign', ctypes.c_char * 32),
         ('header_type', ctypes.c_char * 32),
         ('sha512', ctypes.c_char * 129)
     ]
@@ -251,6 +254,12 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if 'enable_spinning' not in ipart_data:
             ipart_data['enable_spinning'] = True
+
+        if 'is_cached_adf' not in ipart_data:
+            ipart_data['is_cached_adf'] = False
+
+        if 'using_cached_adf' not in ipart_data:
+            ipart_data['using_cached_adf'] = False
 
 
     def set_disk_devices(self, disk_devices: dict):
@@ -627,9 +636,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         # save the CachedADFHeader at last sector of the device file
         header = CachedADFHeader()
-        header.sign = bytes('AMIPI400' + '\0', 'utf8')
-        header.header_type = bytes('CachedADFHeader' + '\0', 'utf8')
-        header.sha512 = bytes(hexdigest + '\0', 'utf8')
+        header.sign = bytes(CACHED_ADF_SIGN, CACHED_ADF_STR_ENCODING)
+        header.header_type = bytes(CACHED_ADF_HEADER_TYPE, CACHED_ADF_STR_ENCODING)
+        header.sha512 = bytes(hexdigest, CACHED_ADF_STR_ENCODING)
 
         os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, bytes(header))
 
@@ -1105,6 +1114,27 @@ def add_adf_disk_device(
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
     disk_devices[ipart_dev]['size'] = FLOPPY_ADF_SIZE
     disk_devices[ipart_dev]['force_add'] = force_add
+
+    update_cached_adf_flags(ipart_dev, ipart_data)
+
+
+def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
+    if not ENABLE_ADF_CACHING:
+        return
+
+    last_sector_data = file_get_bytes_contents(ipart_dev, PHYSICAL_SECTOR_SIZE, FLOPPY_DEVICE_LAST_SECTOR)
+    adf_header = CachedADFHeader.from_buffer_copy(last_sector_data)
+
+    decoded_sign = str(adf_header.sign, CACHED_ADF_STR_ENCODING)
+    decoded_header_type = str(adf_header.header_type, CACHED_ADF_STR_ENCODING)
+
+    if decoded_sign != CACHED_ADF_SIGN or decoded_header_type != CACHED_ADF_HEADER_TYPE:
+        # ADF not cached
+        return
+
+    print_log('{filename} is cached ADF'.format(
+        filename=ipart_dev
+    ))
 
 
 def add_hdf_disk_device(
