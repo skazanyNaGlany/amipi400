@@ -255,11 +255,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         if 'enable_spinning' not in ipart_data:
             ipart_data['enable_spinning'] = True
 
-        if 'is_cached_adf' not in ipart_data:
-            ipart_data['is_cached_adf'] = False
-
-        if 'using_cached_adf' not in ipart_data:
-            ipart_data['using_cached_adf'] = False
+        if 'cached_adf_pathname' not in ipart_data:
+            ipart_data['cached_adf_pathname'] = ''
 
 
     def set_disk_devices(self, disk_devices: dict):
@@ -1118,6 +1115,7 @@ def add_adf_disk_device(
     disk_devices[ipart_dev]['public_name'] = device_get_public_name(disk_devices[ipart_dev])
     disk_devices[ipart_dev]['size'] = FLOPPY_ADF_SIZE
     disk_devices[ipart_dev]['force_add'] = force_add
+    disk_devices[ipart_dev]['cached_adf_pathname'] = ''
 
     update_cached_adf_flags(ipart_dev, ipart_data)
 
@@ -1136,8 +1134,17 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
         # ADF not cached
         return
 
-    print_log('{filename} is cached ADF'.format(
-        filename=ipart_dev
+    decoded_sha512 = str(adf_header.sha512, CACHED_ADF_STR_ENCODING)
+    cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, decoded_sha512 + FLOPPY_ADF_EXTENSION)
+
+    if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
+        return
+
+    ipart_data['cached_adf_pathname'] = cached_adf_pathname
+
+    print_log('{filename} is cached ADF (as {cached_adf_pathname})'.format(
+        filename=ipart_dev,
+        cached_adf_pathname=cached_adf_pathname
     ))
 
 
