@@ -703,6 +703,25 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return os_read(handle, offset, size)
 
 
+    def _floppy_read_cached(self, offset, size, ipart_data):
+        self._save_file_access_time(ipart_data['device'])
+        self._set_fully_cached(ipart_data, True)
+
+        if ipart_data['enable_spinning']:
+            self._disk_spinner.set_spinning_by_pathname(
+                ipart_data['device'],
+                True,
+                offset,
+                PHYSICAL_SECTOR_SIZE
+            )
+
+        return file_get_bytes_contents(
+            ipart_data['cached_adf_pathname'],
+            size,
+            offset
+        )
+
+
     def read(self, path, size, offset, fh):
         with self._mutex:
             self._flush_handles()
@@ -726,6 +745,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 self._save_file_access_time(ipart_data['device'])
 
                 return b''
+
+            if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
+                return self._floppy_read_cached(offset, size, ipart_data)
 
             handle = self._open_handle(ipart_data)
 
