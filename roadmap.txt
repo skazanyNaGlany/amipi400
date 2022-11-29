@@ -766,3 +766,7 @@ v 2. re-implement low-level df copy
 
   cdrdao read-cd --remote -v0 --read-raw --device /dev/sr0 --driver generic-mmc --paranoia-mode 3 --datafile audiocd.bin  audiocd.toc
 
+
+
+
+https://linuxconfig.org/how-to-run-x-applications-without-a-desktop-or-a-wm
