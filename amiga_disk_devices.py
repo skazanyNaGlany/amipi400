@@ -651,6 +651,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             )
             os.sync()
 
+            print_log('{filename} saved cached ADF as {cached_adf_pathname}'.format(
+                filename=ipart_data['device'],
+                cached_adf_pathname=cached_adf_pathname
+            ))
+
 
     def _generate_status_log(self):
         if self._status_log_content:
