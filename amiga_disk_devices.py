@@ -655,6 +655,13 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             )
             os.sync()
 
+            # next call to read() or write() will be redirected to
+            # _floppy_read_cached() or _floppy_write_cached()
+            ipart_data['cached_adf_pathname'] = cached_adf_pathname
+
+            # close the handle, it would not be needed anymore
+            self._close_handle(ipart_data['device'])
+
             print_log('{filename} saved cached ADF as {cached_adf_pathname}'.format(
                 filename=ipart_data['device'],
                 cached_adf_pathname=cached_adf_pathname
