@@ -94,7 +94,7 @@ KICKSTART_EXTENDED_PATHNAMES = [
     '../amiberry/kickstart/extended/*.rom',
     'kickstart/extended/*.rom',
 ]
-EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s amiberry.gfx_correct_aspect=0 -s gfx_width=720 -s gfx_width_windowed=720 -s gfx_height=568 -s gfx_height_windowed=568 -s gfx_fullscreen_amiga=fullwindow -s gfx_fullscreen_picasso=fullwindow -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives} {additional_config_options}'
+EMULATOR_RUN_PATTERN = '{executable} -G -m {amiga_model_id} -s bsdsocket_emu=true -s scsi=false -s nr_floppies={nr_floppies} {config_options} -r "{kickstart}" {extended_kickstart} {floppies} {floppy_types} {drives} {cd_drives} {additional_config_options}'
 CONFIG_INI_NAME = '.amipi400.ini'
 DEFAULT_BOOT_PRIORITY = 0
 AUTORUN_EMULATOR = True
