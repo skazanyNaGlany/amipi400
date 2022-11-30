@@ -411,8 +411,12 @@ def get_dir_oldest_file(dir: str):
     return sorted(glob.glob(os.path.join(dir, '*')), key=os.path.getctime)[0]
 
 
-def file_put_contents(pathname: str, contents: bytes):
-    with open(pathname, 'wb+') as f:
+def file_put_contents(pathname: str, contents: bytes, offset=0, overwrite=True):
+    mode = 'wb+' if overwrite else 'ab'
+    
+    with open(pathname, mode) as f:
+        f.seek(offset, 0)
+
         return f.write(contents)
 
 
@@ -425,3 +429,19 @@ def save_replace_file(pathname: str, contents: bytes, max_dir_size: int):
         os.remove(oldest_pathname)
 
     file_put_contents(pathname, contents)
+
+
+def file_write_bytes(pathname, offset, data, additional_flags = 0):
+    fd = os.open(pathname, os.O_WRONLY | additional_flags)
+
+    if fd < 0:
+        return -1
+
+    if os.lseek(fd, offset, os.SEEK_SET) < 0:
+        return -1
+
+    result = os.write(fd, data)
+
+    os.close(fd)
+
+    return result

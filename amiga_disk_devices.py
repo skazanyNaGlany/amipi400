@@ -5,6 +5,8 @@ import os
 import subprocess
 import traceback
 
+from utils import file_write_bytes, file_put_contents
+
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
 assert os.geteuid() == 0, 'This script must be run as root'
@@ -722,6 +724,20 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         )
 
 
+    def _floppy_write_cached(self, offset, data, ipart_data):
+        self._save_file_modification_time(ipart_data['device'])
+        self._set_fully_cached(ipart_data, True)
+
+        # TODO write to real floppy
+
+        return file_write_bytes(
+            ipart_data['cached_adf_pathname'],
+            offset,
+            data,
+            os.O_SYNC
+        )
+
+
     def read(self, path, size, offset, fh):
         with self._mutex:
             self._flush_handles()
@@ -805,6 +821,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 self._save_file_modification_time(ipart_data['device'])
 
                 return b''
+
+            if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
+                return self._floppy_write_cached(offset, data, ipart_data)
 
             handle = self._open_handle(ipart_data)
 
