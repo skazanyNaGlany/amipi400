@@ -5,8 +5,6 @@ import os
 import subprocess
 import traceback
 
-from utils import file_write_bytes, file_put_contents
-
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
 assert os.geteuid() == 0, 'This script must be run as root'
@@ -31,8 +29,7 @@ try:
     from errno import ENOENT
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
-    from array import array
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, get_dir_size, file_get_bytes_contents
+    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, file_read_bytes, file_write_bytes
 except ImportError as xie:
     traceback.print_exc()
     sys.exit(1)
@@ -717,10 +714,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 PHYSICAL_SECTOR_SIZE
             )
 
-        return file_get_bytes_contents(
+        return file_read_bytes(
             ipart_data['cached_adf_pathname'],
-            size,
-            offset
+            offset,
+            size
         )
 
 
@@ -1089,25 +1086,28 @@ def device_get_public_name(ipart_data: dict):
 
 
 def get_hdf_type(pathname: str) -> int:
+    # TODO test me
     file_stat = os.stat(pathname)
 
-    with open(pathname, 'rb') as file:
-        data = array('B', file.read(PHYSICAL_SECTOR_SIZE))
+    data = file_read_bytes(pathname, 0, PHYSICAL_SECTOR_SIZE)
 
-        char_0 = chr(data[0])
-        char_1 = chr(data[1])
-        char_2 = chr(data[2])
-        char_3 = chr(data[3])
+    if len(data) < 4:
+        return None
 
-        first_4_chars = ''.join([char_0, char_1, char_2, char_3])
+    char_0 = chr(data[0])
+    char_1 = chr(data[1])
+    char_2 = chr(data[2])
+    char_3 = chr(data[3])
 
-        if first_4_chars == 'RDSK':
-            return AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB
-        elif first_4_chars.startswith('DOS'):
-            if file_stat.st_size < 4 * 1024 * 1024:
-                return AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE
-            else:
-                return AMIGA_DISK_DEVICE_TYPE_HDF
+    first_4_chars = ''.join([char_0, char_1, char_2, char_3])
+
+    if first_4_chars == 'RDSK':
+        return AMIGA_DISK_DEVICE_TYPE_HDF_HDFRDB
+    elif first_4_chars.startswith('DOS'):
+        if file_stat.st_size < 4 * 1024 * 1024:
+            return AMIGA_DISK_DEVICE_TYPE_HDF_DISKIMAGE
+        else:
+            return AMIGA_DISK_DEVICE_TYPE_HDF
 
     return None
 
@@ -1181,7 +1181,7 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
     if not ENABLE_ADF_CACHING:
         return
 
-    last_sector_data = file_get_bytes_contents(ipart_dev, PHYSICAL_SECTOR_SIZE, FLOPPY_DEVICE_LAST_SECTOR)
+    last_sector_data = file_read_bytes(ipart_dev, FLOPPY_DEVICE_LAST_SECTOR, PHYSICAL_SECTOR_SIZE)
     adf_header = CachedADFHeader.from_buffer_copy(last_sector_data)
 
     decoded_sign = str(adf_header.sign, CACHED_ADF_STR_ENCODING)
@@ -1342,11 +1342,6 @@ def clear_bits(i: int, bits: list) -> int:
     return i
 
 
-def read_file_header(filename: str) -> Optional[bytes]:
-    with open(filename, 'rb') as f:
-        return f.read(PHYSICAL_SECTOR_SIZE)
-
-
 def update_disk_devices(partitions: dict, disk_devices: dict):
     cleanup_disk_devices(partitions, disk_devices)
     add_disk_devices2(partitions, disk_devices)
@@ -1431,9 +1426,7 @@ def quick_format_single_device(device: str):
     blank_dos[2] = ord('S')
 
     try:
-        with open(device, 'wb') as f:
-            f.write(blank_dos)
-            f.flush()
+        file_write_bytes(device, 0, blank_dos, os.O_SYNC | os.O_CREAT)
     except OSError as ex:
         print_log(str(ex))
 
