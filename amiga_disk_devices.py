@@ -1186,14 +1186,21 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
     last_sector_data = file_read_bytes(ipart_dev, FLOPPY_DEVICE_LAST_SECTOR, PHYSICAL_SECTOR_SIZE)
     adf_header = CachedADFHeader.from_buffer_copy(last_sector_data)
 
-    decoded_sign = str(adf_header.sign, CACHED_ADF_STR_ENCODING)
-    decoded_header_type = str(adf_header.header_type, CACHED_ADF_STR_ENCODING)
+    decoded_sign = ''
+    decoded_header_type = ''
+    decoded_sha512 = ''
 
-    if decoded_sign != CACHED_ADF_SIGN or decoded_header_type != CACHED_ADF_HEADER_TYPE:
+    try:
+        decoded_sign = str(adf_header.sign, CACHED_ADF_STR_ENCODING)
+        decoded_header_type = str(adf_header.header_type, CACHED_ADF_STR_ENCODING)
+        decoded_sha512 = str(adf_header.sha512, CACHED_ADF_STR_ENCODING)
+    except UnicodeDecodeError:
+        pass
+
+    if decoded_sign != CACHED_ADF_SIGN or decoded_header_type != CACHED_ADF_HEADER_TYPE or not decoded_sha512:
         # ADF not cached
         return
 
-    decoded_sha512 = str(adf_header.sha512, CACHED_ADF_STR_ENCODING)
     cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, decoded_sha512 + FLOPPY_ADF_EXTENSION)
 
     if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
