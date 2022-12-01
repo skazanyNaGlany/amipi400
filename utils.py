@@ -1,4 +1,5 @@
 import glob
+import mmap
 import os
 import time
 import subprocess
@@ -208,3 +209,21 @@ def file_write_bytes(pathname, offset, data, additional_flags = 0):
     os.close(fd)
 
     return result
+
+
+def file_read_bytes_direct(pathname, offset, size, additional_flags = 0):
+    fd = os.open(pathname, os.O_DIRECT | os.O_RDONLY | additional_flags)
+
+    if fd < 0:
+        return -1
+
+    if os.lseek(fd, offset, os.SEEK_SET) < 0:
+        return -1
+
+    fo = os.fdopen(fd, 'rb+', buffering=0)
+    m = mmap.mmap(-1, size)
+
+    fo.readinto(m)
+    os.close(fd)
+
+    return m

@@ -759,8 +759,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
                 return b''
 
-            if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
-                return self._floppy_read_cached(offset, size, ipart_data)
+            if ENABLE_ADF_CACHING:
+                if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
+                    return self._floppy_read_cached(offset, size, ipart_data)
 
             handle = self._open_handle(ipart_data)
 
@@ -819,8 +820,9 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
                 return b''
 
-            if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
-                return self._floppy_write_cached(offset, data, ipart_data)
+            if ENABLE_ADF_CACHING:
+                if ipart_data['is_floppy_drive'] and ipart_data['cached_adf_pathname']:
+                    return self._floppy_write_cached(offset, data, ipart_data)
 
             handle = self._open_handle(ipart_data)
 
