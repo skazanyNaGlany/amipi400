@@ -81,6 +81,7 @@ CACHED_ADFS_DIR = os.path.realpath('./cached_adfs')
 CACHED_ADF_SIGN = 'AMIPI400'
 CACHED_ADF_HEADER_TYPE = 'CachedADFHeader'
 CACHED_ADF_STR_ENCODING = 'utf8'
+SHA512_LENGTH = 128
 MAIN_LOOP_MAX_COUNTER = 0
 
 
@@ -643,11 +644,25 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             ipart_data
         )
 
-        # calculate sha512 hash from readed ADF
-        adf_hash = hashlib.sha512()
-        adf_hash.update(read_result3['all_data'])
+        if ipart_data['cached_adf_sha512']:
+            # use existing sha512 ID
+            hexdigest = ipart_data['cached_adf_sha512']
 
-        hexdigest = adf_hash.hexdigest()
+            print_log('Using existing SHA512 ID={sha512_id} for {filename} '.format(
+                filename=ipart_data['device'],
+                sha512_id=hexdigest
+            ))
+        else:
+            # calculate sha512 hash from readed ADF
+            adf_hash = hashlib.sha512()
+            adf_hash.update(read_result3['all_data'])
+
+            hexdigest = adf_hash.hexdigest()
+
+            print_log('Calculated SHA512 ID={sha512_id} for {filename} '.format(
+                filename=ipart_data['device'],
+                sha512_id=hexdigest
+            ))
 
         # save the CachedADFHeader at last sector of the device file
         header = CachedADFHeader()
@@ -1198,6 +1213,7 @@ def add_adf_disk_device(
     disk_devices[ipart_dev]['size'] = FLOPPY_ADF_SIZE
     disk_devices[ipart_dev]['force_add'] = force_add
     disk_devices[ipart_dev]['cached_adf_pathname'] = ''
+    disk_devices[ipart_dev]['cached_adf_sha512'] = ''
 
     update_cached_adf_flags(ipart_dev, disk_devices[ipart_dev])
 
@@ -1220,19 +1236,30 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
     except UnicodeDecodeError:
         pass
 
-    if decoded_sign != CACHED_ADF_SIGN or decoded_header_type != CACHED_ADF_HEADER_TYPE or not decoded_sha512:
+    if decoded_sign != CACHED_ADF_SIGN or \
+        decoded_header_type != CACHED_ADF_HEADER_TYPE or \
+        not decoded_sha512 or \
+        len(decoded_sha512) < SHA512_LENGTH:
         # ADF not cached
         return
+
+    ipart_data['cached_adf_sha512'] = decoded_sha512
 
     cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, decoded_sha512 + FLOPPY_ADF_EXTENSION)
 
     if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
+        print_log('{filename} is cached ADF (ID={sha512_id}, cached file does not exists, existing ID will be used)'.format(
+            filename=ipart_dev,
+            sha512_id=decoded_sha512
+        ))
+
         return
 
     ipart_data['cached_adf_pathname'] = cached_adf_pathname
 
-    print_log('{filename} is cached ADF (as {cached_adf_pathname})'.format(
+    print_log('{filename} is cached ADF (ID={sha512_id}, as {cached_adf_pathname})'.format(
         filename=ipart_dev,
+        sha512_id=decoded_sha512,
         cached_adf_pathname=cached_adf_pathname
     ))
 
