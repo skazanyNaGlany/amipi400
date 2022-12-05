@@ -2,7 +2,6 @@ from errno import EIO, ENOSPC, EROFS
 
 import sys
 import os
-import subprocess
 import traceback
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
@@ -14,7 +13,6 @@ try:
     import time
     import tempfile
     import re
-    import subprocess
     import logzero
     import numpy
     import threading
@@ -29,7 +27,17 @@ try:
     from errno import ENOENT
     from stat import S_IFDIR, S_IFREG
     from pynput.keyboard import Key, Listener
-    from utils import set_numlock_state, mute_system_sound, unmute_system_sound, enable_power_led, disable_power_led, init_simple_mixer_control, save_replace_file, file_read_bytes, file_write_bytes
+    from utils import (
+        mute_system_sound,
+        unmute_system_sound,
+        enable_power_led,
+        disable_power_led,
+        init_simple_mixer_control,
+        save_replace_file,
+        file_read_bytes,
+        file_write_bytes,
+        file_read_bytes_direct
+    )
 except ImportError as xie:
     traceback.print_exc()
     sys.exit(1)
@@ -106,87 +114,95 @@ class CachedADFHeader(ctypes.Structure):
     ]
 
 
-class DiskSpinner(threading.Thread):
+class AsyncFileOps(threading.Thread):
     def __init__(self):
         self._running = False
-        self._pathname_spinnings = {}
-        self._handle_spinnings = {}
-        self._cached_ranges = {}
-        self._cached_ranges2 = {}
+        self._pathname_spinnings = []
+        self._pathname_writings = []
 
         threading.Thread.__init__(self)
 
 
-    def _is_dd_running(self, dd_process) -> bool:
-        if dd_process.poll() is None:
-            return True
-
-        return False
-
-
-    def _run_dd(self, device: str, offset, size):
-        if size <= 0:
-            return None
-
-        count_sectors = int(size / PHYSICAL_SECTOR_SIZE)
-
-        if count_sectors <= 0:
-            return None
-
-        dd_str = 'dd iflag=skip_bytes,direct bs={bs} count={count} skip={skip} if=\"{_if}\" of=\"{of}\" status=none'.format(
-            bs=PHYSICAL_SECTOR_SIZE,
-            count=count_sectors,
-            skip=offset,
-            _if=device,
-            of='/dev/null'
-        )
-
-        return subprocess.Popen(dd_str, shell=True)
-
-
     def _process_spinnings_by_pathname(self):
-        for device in self._pathname_spinnings:
-            if self._pathname_spinnings[device]['dd_process']:
-                if not self._is_dd_running(self._pathname_spinnings[device]['dd_process']):
-                    self._pathname_spinnings[device]['dd_process'] = None
+        while self._pathname_spinnings:
+            spinning_data = self._pathname_spinnings.pop(0)
 
-            if not self._pathname_spinnings[device]['enable']:
-                continue
+            try:
+                file_read_bytes_direct(
+                    spinning_data['pathname'],
+                    spinning_data['offset'],
+                    spinning_data['size']
+                )
+            except Exception as x:
+                print_log('_process_spinnings_by_pathname', x)
 
-            self._pathname_spinnings[device]['enable'] = False
-            self._pathname_spinnings[device]['dd_process'] = self._run_dd(
-                device,
-                self._pathname_spinnings[device]['offset'],
-                self._pathname_spinnings[device]['size']
-            )
+
+    def _process_writings_by_pathname(self):
+        handles = {}
+
+        while self._pathname_writings:
+            disable_power_led()
+
+            write_data = self._pathname_writings.pop(0)
+
+            if write_data['pathname'] not in handles:
+                handles[write_data['pathname']] = os.open(write_data['pathname'], os.O_WRONLY)
+
+            fd = handles[write_data['pathname']]
+
+            try:
+                disable_power_led()
+
+                file_write_bytes(
+                    write_data['pathname'],
+                    write_data['offset'],
+                    write_data['data'],
+                    use_fd=fd
+                )
+            except Exception as x:
+                print_log('_process_writings_by_pathname', x)
+
+            disable_power_led()
+
+        for pathname, fd in handles.items():
+            os.close(fd)
+
+
+    def get_writing_payload_size(self):
+        payload_size = 0
+
+        for write_data in self._pathname_writings:
+            payload_size += len(write_data['data'])
+
+        return payload_size
 
 
     def run(self):
         while self._running:
             self._process_spinnings_by_pathname()
+            self._process_writings_by_pathname()
 
-            time.sleep(100 / 1000)
+            time.sleep(10 / 1000)
             time.sleep(0)
 
 
-    def set_spinning_by_pathname(self, pathname: str, enable: bool, offset, size):
-        if pathname in self._pathname_spinnings:
-            if self._pathname_spinnings[pathname]['dd_process']:
-                return
+    def set_spinning_by_pathname(self, pathname: str, offset, size):
+        if len(self._pathname_spinnings) >= 2:
+            return
 
-        if pathname not in self._pathname_spinnings:
-            self._pathname_spinnings[pathname] = {
-                'by_pathname': True,
-                'enable': False,
-                'offset': 0,
-                'size': 0,
-                'dd_process': None
-            }
+        self._pathname_spinnings.append({
+            'pathname': pathname,
+            'offset': offset,
+            'size': size
+        })
 
-        self._pathname_spinnings[pathname]['enable'] = enable
-        self._pathname_spinnings[pathname]['offset'] = offset
-        self._pathname_spinnings[pathname]['size'] = size
-        self._pathname_spinnings[pathname]['dd_process'] = None
+
+    def write_by_pathname(self, pathname: str, offset, data):
+        self._pathname_writings.append({
+            'pathname': pathname,
+            'offset': offset,
+            'data': data
+        })
 
 
     def start(self):
@@ -204,7 +220,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
     _access_times: Dict[str, float]
     _modification_times: Dict[str, float]
 
-    def __init__(self, disk_devices: dict, disk_spinner: DiskSpinner):
+    def __init__(self, disk_devices: dict, async_file_ops: AsyncFileOps):
         self._instance_time = time.time()
         self._disk_devices = disk_devices
         self._static_files = {
@@ -229,7 +245,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._access_times = {}
         self._modification_times = {}
         self._last_write_ts = 0
-        self._disk_spinner = disk_spinner
+        self._async_file_ops = async_file_ops
         self._status_log_content = None
 
 
@@ -565,11 +581,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if ipart_data['fully_cached']:
             if ipart_data['enable_spinning']:
-                self._disk_spinner.set_spinning_by_pathname(
+                self._async_file_ops.set_spinning_by_pathname(
                     ipart_data['device'],
-                    True,
                     offset,
-                    PHYSICAL_SECTOR_SIZE
+                    size
                 )
 
             if read_result['ex'] is not None:
@@ -707,11 +722,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._set_fully_cached(ipart_data, True)
 
         if ipart_data['enable_spinning']:
-            self._disk_spinner.set_spinning_by_pathname(
+            self._async_file_ops.set_spinning_by_pathname(
                 ipart_data['device'],
-                True,
                 offset,
-                PHYSICAL_SECTOR_SIZE
+                size
             )
 
         return file_read_bytes(
@@ -725,7 +739,11 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._save_file_modification_time(ipart_data['device'])
         self._set_fully_cached(ipart_data, True)
 
-        # TODO write to real floppy
+        self._async_file_ops.write_by_pathname(
+            ipart_data['device'],
+            offset,
+            data
+        )
 
         return file_write_bytes(
             ipart_data['cached_adf_pathname'],
@@ -986,8 +1004,13 @@ def get_partitions2(physical_cdrom_drives, physical_floppy_drives) -> 'OrderedDi
     pattern = r'NAME="(\w*)" SIZE="(\d*)" TYPE="(\w*)" MOUNTPOINT="(.*)" LABEL="(.*)" PATH="(.*)" FSTYPE="(.*)" PTTYPE="(.*)" RO="(.*)"'
     ret: OrderedDict[str, dict] = OrderedDict()
 
-    # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype,ro -n -b
-    sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype,ro', '-n', '-b', _out=lsblk_buf)
+    try:
+        # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype,ro -n -b
+        sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype,ro', '-n', '-b', _out=lsblk_buf)
+    except Exception as x:
+        print_log('lsblk', x)
+
+        return None
 
     for line in lsblk_buf.getvalue().splitlines():
         line = line.strip()
@@ -1356,10 +1379,10 @@ def update_disk_devices(partitions: dict, disk_devices: dict):
     add_disk_devices2(partitions, disk_devices)
 
 
-def run_fuse(disk_devices: dict, disk_spinner: DiskSpinner):
+def run_fuse(disk_devices: dict, async_file_ops: AsyncFileOps):
     global fs_instance
 
-    fs_instance = AmigaDiskDevicesFS(disk_devices, disk_spinner)
+    fs_instance = AmigaDiskDevicesFS(disk_devices, async_file_ops)
 
     FUSE(
         fs_instance,
@@ -1370,10 +1393,10 @@ def run_fuse(disk_devices: dict, disk_spinner: DiskSpinner):
     )
 
 
-def init_fuse(disk_devices: dict, disk_spinner: DiskSpinner):
+def init_fuse(disk_devices: dict, async_file_ops: AsyncFileOps):
     print_log('Init FUSE')
 
-    fuse_instance_thread = threading.Thread(target=run_fuse, args=(disk_devices, disk_spinner,))
+    fuse_instance_thread = threading.Thread(target=run_fuse, args=(disk_devices, async_file_ops,))
     fuse_instance_thread.start()
 
     return fuse_instance_thread
@@ -1553,13 +1576,13 @@ def init_keyboard_listener():
     keyboard_listener.start()
 
 
-def init_disk_spinner():
-    print_log('Init DiskSpinner')
+def init_async_file_ops():
+    print_log('Init AsyncFileOps')
 
-    disk_spinner = DiskSpinner()
-    disk_spinner.start()
+    async_file_ops = AsyncFileOps()
+    async_file_ops.start()
 
-    return disk_spinner
+    return async_file_ops
 
 
 def find_physical_cdrom_drives():
@@ -1694,8 +1717,8 @@ def main():
     # logging.basicConfig(level=logging.DEBUG)
     configure_system()
     init_simple_mixer_control()
-    disk_spinner = init_disk_spinner()
-    init_fuse(disk_devices, disk_spinner)
+    async_file_ops = init_async_file_ops()
+    init_fuse(disk_devices, async_file_ops)
     update_physical_floppy_drives(physical_floppy_drives)
     print_physical_floppy_drives(physical_floppy_drives)
     update_physical_cdrom_drives(physical_cdrom_drives)
@@ -1711,17 +1734,19 @@ def main():
                     physical_floppy_drives
                 )
 
-                if partitions != old_partitions:
-                    # something changed
-                    print_partitions(partitions)
-                    format_devices(partitions, old_partitions, loop_counter)
-                    update_disk_devices(partitions, disk_devices)
-                    affect_fs_disk_devices(disk_devices)
+                if partitions is not None:
+                    if partitions != old_partitions:
+                        # something changed
+                        print_partitions(partitions)
+                        format_devices(partitions, old_partitions, loop_counter)
+                        update_disk_devices(partitions, disk_devices)
+                        affect_fs_disk_devices(disk_devices)
 
-                if remove_known_disk_devices(partitions, disk_devices):
-                    affect_fs_disk_devices(disk_devices)
+                    if remove_known_disk_devices(partitions, disk_devices):
+                        affect_fs_disk_devices(disk_devices)
 
-                old_partitions = partitions
+                    old_partitions = partitions
+
                 loop_counter += 1
 
             unmute_system_sound()
@@ -1735,7 +1760,7 @@ def main():
     unmute_system_sound()
     enable_power_led()
     unmount_fuse_mountpoint()
-    disk_spinner.stop()
+    async_file_ops.stop()
 
     sys.exit()
 
