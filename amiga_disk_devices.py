@@ -118,24 +118,33 @@ class CachedADFHeader(ctypes.Structure):
 class AsyncFileOps(threading.Thread):
     def __init__(self):
         self._running = False
-        self._pathname_spinnings = []
+        self._pathname_direct_readings = []
         self._pathname_writings = []
 
         threading.Thread.__init__(self)
 
 
-    def _process_spinnings_by_pathname(self):
-        while self._pathname_spinnings:
-            spinning_data = self._pathname_spinnings.pop(0)
+    def _process_direct_readings_by_pathname(self):
+        while self._pathname_direct_readings:
+            reading_data = self._pathname_direct_readings.pop(0)
 
             try:
                 file_read_bytes_direct(
-                    spinning_data['pathname'],
-                    spinning_data['offset'],
-                    spinning_data['size']
+                    reading_data['pathname'],
+                    reading_data['offset'],
+                    reading_data['size']
                 )
+
+                if reading_data['read_handler_func']:
+                    read_handler_func = reading_data['read_handler_func']
+
+                    read_handler_func(
+                        reading_data['pathname'],
+                        reading_data['offset'],
+                        reading_data['size']
+                    )
             except Exception as x:
-                print_log('_process_spinnings_by_pathname', x)
+                print_log('_process_direct_readings_by_pathname', x)
 
 
     def _process_writings_by_pathname(self):
@@ -180,21 +189,23 @@ class AsyncFileOps(threading.Thread):
 
     def run(self):
         while self._running:
-            self._process_spinnings_by_pathname()
+            self._process_direct_readings_by_pathname()
             self._process_writings_by_pathname()
 
             time.sleep(10 / 1000)
             time.sleep(0)
 
 
-    def set_spinning_by_pathname(self, pathname: str, offset, size):
-        if len(self._pathname_spinnings) >= 2:
-            return
+    def read_direct_by_pathname(self, pathname: str, offset, size, read_handler_func=None, max_at_a_time=None):
+        if max_at_a_time is not None:
+            if len(self._pathname_direct_readings) >= max_at_a_time:
+                return
 
-        self._pathname_spinnings.append({
+        self._pathname_direct_readings.append({
             'pathname': pathname,
             'offset': offset,
-            'size': size
+            'size': size,
+            'read_handler_func': read_handler_func
         })
 
 
@@ -582,10 +593,12 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if ipart_data['fully_cached']:
             if ipart_data['enable_spinning']:
-                self._async_file_ops.set_spinning_by_pathname(
+                self._async_file_ops.read_direct_by_pathname(
                     ipart_data['device'],
                     offset,
-                    size
+                    size,
+                    None,
+                    2
                 )
 
             if read_result['ex'] is not None:
@@ -737,10 +750,12 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         self._set_fully_cached(ipart_data, True)
 
         if ipart_data['enable_spinning']:
-            self._async_file_ops.set_spinning_by_pathname(
+            self._async_file_ops.read_direct_by_pathname(
                 ipart_data['device'],
                 offset,
-                size
+                size,
+                None,
+                2
             )
 
         return file_read_bytes(
