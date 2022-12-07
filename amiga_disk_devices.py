@@ -120,15 +120,20 @@ class AsyncFileOps(threading.Thread):
         self._running = False
         self._pathname_direct_readings = []
         self._pathname_writings = []
+        self._pathname_deferred_writings = {}
 
         threading.Thread.__init__(self)
 
 
-    def _process_direct_readings_by_pathname(self):
+    def _direct_readings_by_pathname(self):
+        processed = 0
+
         while self._pathname_direct_readings:
             reading_data = self._pathname_direct_readings.pop(0)
 
             try:
+                processed += 1
+
                 file_read_bytes_direct(
                     reading_data['pathname'],
                     reading_data['offset'],
@@ -146,14 +151,55 @@ class AsyncFileOps(threading.Thread):
             except Exception as x:
                 print_log('_process_direct_readings_by_pathname', x)
 
+        return processed
 
-    def _process_writings_by_pathname(self):
+
+    def _writings_by_pathname(self):
         handles = {}
+        processed = 0
 
         while self._pathname_writings:
             disable_power_led()
 
             write_data = self._pathname_writings.pop(0)
+
+            if write_data['pathname'] not in handles:
+                handles[write_data['pathname']] = os.open(write_data['pathname'], os.O_WRONLY)
+
+            fd = handles[write_data['pathname']]
+
+            try:
+                processed += 1
+
+                disable_power_led()
+
+                file_write_bytes(
+                    write_data['pathname'],
+                    write_data['offset'],
+                    write_data['data'],
+                    use_fd=fd
+                )
+            except Exception as x:
+                print_log('_process_writings_by_pathname', x)
+
+            disable_power_led()
+
+        for pathname, fd in handles.items():
+            os.close(fd)
+
+        return processed
+
+
+    def _deferred_one_time_writings_by_pathname(self, idle_total_secs):
+        handles = {}
+
+        for pathname, write_data in self._pathname_deferred_writings.copy():
+            if write_data['idle_min_secs'] < idle_total_secs:
+                continue
+
+            print('write_data', write_data)
+
+            disable_power_led()
 
             if write_data['pathname'] not in handles:
                 handles[write_data['pathname']] = os.open(write_data['pathname'], os.O_WRONLY)
@@ -174,23 +220,31 @@ class AsyncFileOps(threading.Thread):
 
             disable_power_led()
 
+            self._pathname_deferred_writings[pathname] = None
+
         for pathname, fd in handles.items():
             os.close(fd)
 
 
-    def get_writing_payload_size(self):
-        payload_size = 0
-
-        for write_data in self._pathname_writings:
-            payload_size += len(write_data['data'])
-
-        return payload_size
-
-
     def run(self):
+        idle_start_ts = 0
+
         while self._running:
-            self._process_direct_readings_by_pathname()
-            self._process_writings_by_pathname()
+            processed = 0
+
+            processed += self._direct_readings_by_pathname()
+            processed += self._writings_by_pathname()
+
+            if not processed:
+                # idle, process deferred one-time writings
+                if not idle_start_ts:
+                    idle_start_ts = time.time()
+
+                idle_total_secs = time.time() - idle_start_ts
+
+                self._deferred_one_time_writings_by_pathname(idle_total_secs)
+            else:
+                idle_start_ts = 0
 
             time.sleep(10 / 1000)
             time.sleep(0)
@@ -215,6 +269,14 @@ class AsyncFileOps(threading.Thread):
             'offset': offset,
             'data': data
         })
+
+
+    def deferred_one_time_write_by_pathname(self, pathname: str, offset, data):
+        self._pathname_deferred_writings[pathname] = {
+            'pathname': pathname,
+            'offset': offset,
+            'data': data
+        }
 
 
     def start(self):
