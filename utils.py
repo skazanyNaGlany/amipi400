@@ -186,6 +186,8 @@ def file_read_bytes(pathname, offset, size, additional_flags = 0):
         return -1
 
     if os.lseek(fd, offset, os.SEEK_SET) < 0:
+        os.close(fd)
+
         return -1
 
     result = os.read(fd, size)
@@ -205,6 +207,9 @@ def file_write_bytes(pathname, offset, data, additional_flags = 0, use_fd = None
         fd = use_fd
 
     if os.lseek(fd, offset, os.SEEK_SET) < 0:
+        if use_fd is None:
+            os.close(fd)
+
         return -1
 
     result = os.write(fd, data)
@@ -215,19 +220,53 @@ def file_write_bytes(pathname, offset, data, additional_flags = 0, use_fd = None
     return result
 
 
-def file_read_bytes_direct(pathname, offset, size, additional_flags = 0):
-    fd = os.open(pathname, os.O_DIRECT | os.O_RDONLY | additional_flags)
+def file_read_bytes_direct(pathname, offset, size, additional_flags = 0, use_fd=None, use_fo=None, use_m=None):
+    if use_fd is None:
+        fd = os.open(pathname, os.O_DIRECT | os.O_RDONLY | additional_flags)
 
-    if fd < 0:
-        return -1
+        if fd < 0:
+            return None, None, None
+    else:
+        fd = use_fd
 
     if os.lseek(fd, offset, os.SEEK_SET) < 0:
-        return -1
+        os.close(fd)
 
-    fo = os.fdopen(fd, 'rb+', buffering=0)
-    m = mmap.mmap(-1, size)
+        return None, None, None
+
+    if use_fo is None:
+        fo = os.fdopen(fd, 'rb', buffering=0)
+    else:
+        fo = use_fo
+
+    if use_m is None:
+        m = mmap.mmap(-1, size)
+    else:
+        m = use_m
 
     fo.readinto(m)
-    os.close(fd)
+    
+    return fd, fo, m
 
-    return m
+
+# def file_read_bytes_direct(pathname, offset, size, additional_flags = 0):
+#     fd = os.open(pathname, os.O_DIRECT | os.O_RDONLY | additional_flags)
+
+#     if fd < 0:
+#         return -1
+
+#     if os.lseek(fd, offset, os.SEEK_SET) < 0:
+#         os.close(fd)
+
+#         return -1
+
+#     fo = os.fdopen(fd, 'rb+', buffering=0)
+#     # fo = os.fdopen(fd, 'rb', buffering=0)
+#     m = mmap.mmap(-1, size)
+
+#     fo.readinto(m)
+    
+#     os.close(fd)
+#     # fo.close()
+
+#     return m

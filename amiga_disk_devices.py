@@ -1,8 +1,10 @@
+from curses import noecho
 from errno import EIO, ENOSPC, EROFS
 
 import sys
 import os
 import traceback
+import glob
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
@@ -80,7 +82,7 @@ CACHED_ADFS_MAX_DIR_SIZE = 1073741824       # 1GB
 CACHED_ADFS_DIR = os.path.realpath('./cached_adfs')
 CACHED_ADF_SIGN = 'AMIPI400'
 CACHED_ADF_HEADER_TYPE = 'CachedADFHeader'
-CACHED_ADF_STR_ENCODING = 'utf8'
+CACHED_ADF_STR_ENCODING = 'ascii'
 SHA512_LENGTH = 128
 MAIN_LOOP_MAX_COUNTER = 0
 
@@ -111,7 +113,8 @@ class CachedADFHeader(ctypes.Structure):
     _fields_ = [
         ('sign', ctypes.c_char * 32),
         ('header_type', ctypes.c_char * 32),
-        ('sha512', ctypes.c_char * 129)
+        ('sha512', ctypes.c_char * 129),
+        ('mtime', ctypes.c_float)
     ]
 
 
@@ -127,6 +130,7 @@ class AsyncFileOps(threading.Thread):
 
     def _direct_readings_by_pathname(self):
         processed = 0
+        handles = {}
 
         while self._pathname_direct_readings:
             reading_data = self._pathname_direct_readings.pop(0)
@@ -134,10 +138,23 @@ class AsyncFileOps(threading.Thread):
             try:
                 processed += 1
 
-                file_read_bytes_direct(
+                use_fd = None
+                use_fo = None
+                use_m = None
+
+                if reading_data['pathname'] in handles:
+                    use_fd = handles[reading_data['pathname']][0]
+                    use_fo = handles[reading_data['pathname']][1]
+                    use_m = handles[reading_data['pathname']][2]
+
+                handles[reading_data['pathname']] = file_read_bytes_direct(
                     reading_data['pathname'],
                     reading_data['offset'],
-                    reading_data['size']
+                    reading_data['size'],
+                    0,
+                    use_fd,
+                    use_fo,
+                    use_m
                 )
 
                 if reading_data['read_handler_func']:
@@ -149,9 +166,45 @@ class AsyncFileOps(threading.Thread):
                         reading_data['size']
                     )
             except Exception as x:
+                traceback.print_exc()
                 print_log('_process_direct_readings_by_pathname', x)
+                print_log()
+
+        for pathname, handle_tuples in handles.items():
+            os.close(handle_tuples[0])
+            # handle_tuples[1].close()
+            handle_tuples[2].close()
 
         return processed
+
+
+    # def _direct_readings_by_pathname(self):
+    #     processed = 0
+
+    #     while self._pathname_direct_readings:
+    #         reading_data = self._pathname_direct_readings.pop(0)
+
+    #         try:
+    #             processed += 1
+
+    #             file_read_bytes_direct(
+    #                 reading_data['pathname'],
+    #                 reading_data['offset'],
+    #                 reading_data['size']
+    #             )
+
+    #             if reading_data['read_handler_func']:
+    #                 read_handler_func = reading_data['read_handler_func']
+
+    #                 read_handler_func(
+    #                     reading_data['pathname'],
+    #                     reading_data['offset'],
+    #                     reading_data['size']
+    #                 )
+    #         except Exception as x:
+    #             print_log('_process_direct_readings_by_pathname', x)
+
+    #     return processed
 
 
     def _writings_by_pathname(self):
@@ -193,11 +246,14 @@ class AsyncFileOps(threading.Thread):
     def _deferred_one_time_writings_by_pathname(self, idle_total_secs):
         handles = {}
 
-        for pathname, write_data in self._pathname_deferred_writings.copy():
+        for pathname, write_data in self._pathname_deferred_writings.copy().items():
+            if not write_data:
+                continue
+
             if write_data['idle_min_secs'] < idle_total_secs:
                 continue
 
-            print('write_data', write_data)
+            # print('write_data', write_data)
 
             disable_power_led()
 
@@ -219,6 +275,12 @@ class AsyncFileOps(threading.Thread):
                 print_log('_process_writings_by_pathname', x)
 
             disable_power_led()
+
+            if write_data['done_handler']:
+                write_data['done_handler'](
+                    write_data,
+                    write_data['done_handler_args']
+                )
 
             self._pathname_deferred_writings[pathname] = None
 
@@ -271,11 +333,22 @@ class AsyncFileOps(threading.Thread):
         })
 
 
-    def deferred_one_time_write_by_pathname(self, pathname: str, offset, data):
+    def deferred_one_time_write_by_pathname(
+        self,
+        pathname,
+        offset,
+        data,
+        idle_min_secs,
+        done_handler=None,
+        done_handler_args=None
+    ):
         self._pathname_deferred_writings[pathname] = {
             'pathname': pathname,
             'offset': offset,
-            'data': data
+            'data': data,
+            'idle_min_secs': idle_min_secs,
+            'done_handler': done_handler,
+            'done_handler_args': done_handler_args
         }
 
 
@@ -598,6 +671,8 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
                     break
             except Exception as x:
+                print_log('_partial_read', x)
+
                 ex = x
 
                 break
@@ -660,7 +735,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                     offset,
                     size,
                     None,
-                    2
+                    1
                 )
 
             if read_result['ex'] is not None:
@@ -698,7 +773,6 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         return read_result['all_data']
 
-
     def _floppy_cache_adf(self, handle, ipart_data):
         # should be called only once when saving cached ADF
         # since read() and write() will not call
@@ -721,33 +795,32 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         if ipart_data['cached_adf_sha512']:
             # use existing sha512 ID
-            hexdigest = ipart_data['cached_adf_sha512']
+            sha512_id = ipart_data['cached_adf_sha512']
 
             print_log('Using existing SHA512 ID={sha512_id} for {filename} '.format(
                 filename=ipart_data['device'],
-                sha512_id=hexdigest
+                sha512_id=sha512_id
             ))
         else:
             # calculate sha512 hash from readed ADF
             adf_hash = hashlib.sha512()
             adf_hash.update(read_result3['all_data'])
 
-            hexdigest = adf_hash.hexdigest()
+            sha512_id = adf_hash.hexdigest()
 
             print_log('Calculated SHA512 ID={sha512_id} for {filename} '.format(
                 filename=ipart_data['device'],
-                sha512_id=hexdigest
+                sha512_id=sha512_id
             ))
 
-        # save the CachedADFHeader at last sector of the device file
-        header = CachedADFHeader()
-        header.sign = bytes(CACHED_ADF_SIGN, CACHED_ADF_STR_ENCODING)
-        header.header_type = bytes(CACHED_ADF_HEADER_TYPE, CACHED_ADF_STR_ENCODING)
-        header.sha512 = bytes(hexdigest, CACHED_ADF_STR_ENCODING)
-
-        os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, bytes(header))
-
-        cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, hexdigest + FLOPPY_ADF_EXTENSION)
+        # 123
+        cached_adf_pathname = os.path.join(
+            CACHED_ADFS_DIR,
+            build_cached_adf_filename(
+                sha512_id,
+                FLOPPY_ADF_EXTENSION
+            )
+        )
 
         if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
             # save a copy of the ADF file in the cache dir
@@ -770,6 +843,10 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 filename=ipart_data['device'],
                 cached_adf_pathname=cached_adf_pathname
             ))
+
+        header = build_CachedADFHeader(sha512_id, os.path.getmtime(cached_adf_pathname))
+
+        os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, header)
 
 
     def _generate_status_log(self):
@@ -817,7 +894,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 offset,
                 size,
                 None,
-                2
+                1
             )
 
         return file_read_bytes(
@@ -837,12 +914,37 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             data
         )
 
-        return file_write_bytes(
+
+
+
+
+        # 456
+        def write_done_handler(write_data, done_handler_args):
+            print(time.time(), 'data', locals())
+
+        write_result = file_write_bytes(
             ipart_data['cached_adf_pathname'],
             offset,
             data,
             os.O_SYNC
         )
+
+        header = build_CachedADFHeader(
+            ipart_data['cached_adf_sha512'],
+            os.path.getmtime(ipart_data['cached_adf_pathname'])
+        )
+
+        self._async_file_ops.deferred_one_time_write_by_pathname(
+            ipart_data['device'],
+            FLOPPY_DEVICE_LAST_SECTOR,
+            header,
+            1,
+            done_handler=write_done_handler,
+            done_handler_args=(ipart_data,)
+        )
+
+
+        return write_result
 
 
     def read(self, path, size, offset, fh):
@@ -957,6 +1059,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 if ipart_data['is_floppy_drive']:
                     mute_system_sound(4)
             except Exception as x:
+                print_log('write', x)
                 ex = x
 
             self._save_file_modification_time(ipart_data['device'])
@@ -1100,7 +1203,7 @@ def get_partitions2(physical_cdrom_drives, physical_floppy_drives) -> 'OrderedDi
         # lsblk -P -o name,size,type,mountpoint,label,path,fstype,pttype,ro -n -b
         sh.lsblk('-P', '-o', 'name,size,type,mountpoint,label,path,fstype,pttype,ro', '-n', '-b', _out=lsblk_buf)
     except Exception as x:
-        print_log('lsblk', x)
+        print_log('get_partitions2 lsblk', x)
 
         return None
 
@@ -1292,10 +1395,24 @@ def add_adf_disk_device(
     disk_devices[ipart_dev]['cached_adf_pathname'] = ''
     disk_devices[ipart_dev]['cached_adf_sha512'] = ''
 
-    update_cached_adf_flags(ipart_dev, disk_devices[ipart_dev])
+    update_cached_adf_data(ipart_dev, disk_devices[ipart_dev])
 
 
-def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
+def build_CachedADFHeader(sha512_id, mtime):
+    header = CachedADFHeader()
+    header.sign = bytes(CACHED_ADF_SIGN, CACHED_ADF_STR_ENCODING)
+    header.header_type = bytes(CACHED_ADF_HEADER_TYPE, CACHED_ADF_STR_ENCODING)
+    header.sha512 = bytes(sha512_id, CACHED_ADF_STR_ENCODING)
+    header.mtime = mtime
+
+    return bytes(header)
+
+
+def build_cached_adf_filename(sha512_id, ext):
+    return sha512_id + ext
+
+
+def update_cached_adf_data(ipart_dev: str, ipart_data: dict):
     if not ENABLE_ADF_CACHING:
         return
 
@@ -1313,6 +1430,9 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
     except UnicodeDecodeError:
         pass
 
+    if adf_header.mtime < 0:
+        adf_header.mtime = 0
+
     if decoded_sign != CACHED_ADF_SIGN or \
         decoded_header_type != CACHED_ADF_HEADER_TYPE or \
         not decoded_sha512 or \
@@ -1322,22 +1442,59 @@ def update_cached_adf_flags(ipart_dev: str, ipart_data: dict):
 
     ipart_data['cached_adf_sha512'] = decoded_sha512
 
-    cached_adf_pathname = os.path.join(CACHED_ADFS_DIR, decoded_sha512 + FLOPPY_ADF_EXTENSION)
+    cached_adf_pattern = os.path.join(
+        CACHED_ADFS_DIR,
+        build_cached_adf_filename(
+            decoded_sha512,
+            FLOPPY_ADF_EXTENSION
+        )
+    )
 
-    if not os.path.exists(cached_adf_pathname) or os.path.getsize(cached_adf_pathname) != FLOPPY_ADF_SIZE:
-        print_log('{filename} is cached ADF (ID={sha512_id}, cached file does not exists, existing ID will be used)'.format(
+    print_log('{filename} looking for {cached_adf_pattern}'.format(
+        filename=ipart_dev,
+        cached_adf_pattern=cached_adf_pattern
+    ))
+
+    found_cached_adfs = list(glob.glob(cached_adf_pattern))
+
+    if not found_cached_adfs or \
+        not os.path.exists(found_cached_adfs[0]):
+        print_log('{filename} is cached ADF (ID={sha512_id}, mtime={mtime}, cached file does not exists, existing ID will be used)'.format(
             filename=ipart_dev,
-            sha512_id=decoded_sha512
+            sha512_id=decoded_sha512,
+            mtime=adf_header.mtime
         ))
 
         return
 
-    ipart_data['cached_adf_pathname'] = cached_adf_pathname
+    if os.path.getsize(found_cached_adfs[0]) != FLOPPY_ADF_SIZE:
+        print_log('{filename} is cached ADF (ID={sha512_id}, mtime={mtime}, cached file has incorrect size, removing, existing ID will be used)'.format(
+            filename=ipart_dev,
+            sha512_id=decoded_sha512,
+            mtime=adf_header.mtime
+        ))
+
+        os.remove(found_cached_adfs[0])
+
+        return
+
+    if os.path.getmtime(found_cached_adfs[0]) < adf_header.mtime:
+        print_log('{filename} is cached ADF (ID={sha512_id}, mtime={mtime}, cached file has incorrect mtime, removing, existing ID will be used)'.format(
+            filename=ipart_dev,
+            sha512_id=decoded_sha512,
+            mtime=adf_header.mtime
+        ))
+
+        os.remove(found_cached_adfs[0])
+
+        return
+
+    ipart_data['cached_adf_pathname'] = found_cached_adfs[0]
 
     print_log('{filename} is cached ADF (ID={sha512_id}, as {cached_adf_pathname})'.format(
         filename=ipart_dev,
         sha512_id=decoded_sha512,
-        cached_adf_pathname=cached_adf_pathname
+        cached_adf_pathname=found_cached_adfs[0]
     ))
 
 
