@@ -117,7 +117,7 @@ class CachedADFHeader(ctypes.Structure):
         ('sign', ctypes.c_char * 32),
         ('header_type', ctypes.c_char * 32),
         ('sha512', ctypes.c_char * 129),
-        ('mtime', ctypes.c_float)
+        ('mtime', ctypes.c_int64)
     ]
 
 
@@ -839,17 +839,20 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
             # _floppy_read_cached() or _floppy_write_cached()
             ipart_data['cached_adf_pathname'] = cached_adf_pathname
 
-            # close the handle, it would not be needed anymore
-            self._close_handle(ipart_data['device'])
+            # # close the handle, it would not be needed anymore
+            # self._close_handle(ipart_data['device'])
 
             print_log('{filename} saved cached ADF as {cached_adf_pathname}'.format(
                 filename=ipart_data['device'],
                 cached_adf_pathname=cached_adf_pathname
             ))
 
-        header = build_CachedADFHeader(sha512_id, os.path.getmtime(cached_adf_pathname))
+        header = build_CachedADFHeader(sha512_id, int(os.path.getmtime(cached_adf_pathname)))
 
         os_write(handle, FLOPPY_DEVICE_LAST_SECTOR, header)
+
+        # close the handle, it would not be needed anymore
+        self._close_handle(ipart_data['device'])
 
 
     def _generate_status_log(self):
@@ -979,7 +982,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         header = build_CachedADFHeader(
             ipart_data['cached_adf_sha512'],
-            os.path.getmtime(ipart_data['cached_adf_pathname'])
+            int(os.path.getmtime(ipart_data['cached_adf_pathname']))
         )
 
         self._async_file_ops.deferred_one_time_write_by_pathname(
@@ -1526,7 +1529,8 @@ def update_cached_adf_data(ipart_dev: str, ipart_data: dict):
 
         return
 
-    if Decimal(os.path.getmtime(found_cached_adfs[0])) < Decimal(adf_header.mtime):
+    # if Decimal(os.path.getmtime(found_cached_adfs[0])) < Decimal(adf_header.mtime):
+    if int(os.path.getmtime(found_cached_adfs[0])) < adf_header.mtime:
         print_log('{filename} is cached ADF (ID={sha512_id}, mtime={mtime}, cached file has incorrect mtime, removing, existing ID will be used)'.format(
             filename=ipart_dev,
             sha512_id=decoded_sha512,
@@ -1698,7 +1702,8 @@ def run_fuse(disk_devices: dict, async_file_ops: AsyncFileOps):
         TMP_PATH_PREFIX,
         foreground=True,
         allow_other=True,
-        direct_io=True
+        direct_io=True,
+        debug=True
     )
 
 
