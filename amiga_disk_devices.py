@@ -927,7 +927,7 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 offset,
                 size,
                 None,
-                1
+                2
             )
 
         fd = self._open_cached_adf_handle(ipart_data)
@@ -1702,8 +1702,7 @@ def run_fuse(disk_devices: dict, async_file_ops: AsyncFileOps):
         TMP_PATH_PREFIX,
         foreground=True,
         allow_other=True,
-        direct_io=True,
-        debug=True
+        direct_io=True
     )
 
 
