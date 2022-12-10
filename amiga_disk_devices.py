@@ -1,10 +1,13 @@
-from curses import noecho
 from errno import EIO, ENOSPC, EROFS
 
 import sys
 import os
 import traceback
 import glob
+
+from decimal import Decimal, getcontext
+
+getcontext().prec = 6
 
 assert sys.platform == 'linux', 'This script must be run only on Linux'
 assert sys.version_info.major >= 3 and sys.version_info.minor >= 5, 'This script requires Python 3.5+'
@@ -884,6 +887,33 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
         return os_read(handle, offset, size)
 
 
+
+
+
+
+
+
+
+
+
+
+
+    def _open_cached_adf_handle(self, ipart_data: dict) -> Optional[int]:
+        pathname = ipart_data['cached_adf_pathname']
+
+        if pathname in self._handles:
+            return self._handles[pathname]
+
+        mode = os.O_SYNC | os.O_RSYNC | os.O_RDWR
+
+        try:
+            self._handles[pathname] = os.open(pathname, mode)
+        except:
+            return None
+
+        return self._handles[pathname]
+
+
     def _floppy_read_cached(self, offset, size, ipart_data):
         self._save_file_access_time(ipart_data['device'])
         self._set_fully_cached(ipart_data, True)
@@ -897,11 +927,24 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
                 1
             )
 
+        fd = self._open_cached_adf_handle(ipart_data)
+
+        # TODO use use_fd
         return file_read_bytes(
             ipart_data['cached_adf_pathname'],
             offset,
-            size
+            size,
+            use_fd=fd
         )
+
+
+
+
+
+
+
+
+
 
 
     def _floppy_write_cached(self, offset, data, ipart_data):
@@ -920,13 +963,18 @@ class AmigaDiskDevicesFS(LoggingMixIn, Operations):
 
         # 456
         def write_done_handler(write_data, done_handler_args):
+            # return
             print(time.time(), 'data', locals())
 
+        fd = self._open_cached_adf_handle(ipart_data)
+
+        # TODO use use_fd
         write_result = file_write_bytes(
             ipart_data['cached_adf_pathname'],
             offset,
             data,
-            os.O_SYNC
+            0,
+            use_fd=fd
         )
 
         header = build_CachedADFHeader(
@@ -1478,7 +1526,7 @@ def update_cached_adf_data(ipart_dev: str, ipart_data: dict):
 
         return
 
-    if os.path.getmtime(found_cached_adfs[0]) < adf_header.mtime:
+    if Decimal(os.path.getmtime(found_cached_adfs[0])) < Decimal(adf_header.mtime):
         print_log('{filename} is cached ADF (ID={sha512_id}, mtime={mtime}, cached file has incorrect mtime, removing, existing ID will be used)'.format(
             filename=ipart_dev,
             sha512_id=decoded_sha512,

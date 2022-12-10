@@ -179,20 +179,25 @@ def save_replace_file(pathname: str, contents: bytes, max_dir_size: int):
     file_write_bytes(pathname, 0, contents, os.O_SYNC | os.O_CREAT)
 
 
-def file_read_bytes(pathname, offset, size, additional_flags = 0):
-    fd = os.open(pathname, os.O_RDONLY | additional_flags)
+def file_read_bytes(pathname, offset, size, additional_flags = 0, use_fd = None):
+    if use_fd is None:
+        fd = os.open(pathname, os.O_RDONLY | additional_flags)
 
-    if fd < 0:
-        return -1
+        if fd < 0:
+            return -1
+    else:
+        fd = use_fd
 
     if os.lseek(fd, offset, os.SEEK_SET) < 0:
-        os.close(fd)
+        if use_fd is None:
+            os.close(fd)
 
         return -1
 
     result = os.read(fd, size)
 
-    os.close(fd)
+    if use_fd is None:
+        os.close(fd)
 
     return result
 
